@@ -33,6 +33,5 @@ modRelConfig.txt follows the stage ID conventions set forth by the alternative R
 
 ## Credits
 
-I would like to thank CraftedCart, miss mecha, et al. for figuring out the amount of the REL needed for this program to exist.
-
+I would like to thank various people from the SMB Level Workshop for their documentation about SMB2, like miss mecha, CraftSpider, bobjrsenior, et al. I would also like to thank CraftedCart for his repo, smbinfo, that is a compilation of this data.
 
