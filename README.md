@@ -2,7 +2,7 @@
 
 ## Wat?
 
-This is a program that modifies the challenge mode difficulties in mkb2.main_loop.rel. It can change what levels a difficulty contains, and it could set the maximum alloted time for the levels.
+This is a program that modifies the challenge mode difficulties in mkb2.main_loop.rel. It can change what levels a difficulty contains, and it could set the maximum alloted time for ANY level
 
 ## Compiling
 
