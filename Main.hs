@@ -27,16 +27,13 @@ main = do
   let (inFileName:configFileName:outFileName:_) = args
 
   -- Read config and set up things
-  diffs <- getEntriesFromConfig configFileName
-  let (offs,sz) = offsetsAndSize diffs
+  cfgPairs <- readConfig configFileName
+  let (offs,sz) = computeOffsets cfgPairs
+      allEntries = map snd cfgPairs
   hPutStrLn stderr $ "Bytes needed to output entries: 0x" ++ (show $ Hex sz)
   when (sz > maxSize) $ do
     hPutStrLn stderr "The entries won't fit! You need to use under 0x3E3C bytes!"
     exitFailure
-  when (not $ elem (length offs) [8,9]) $ do
-    hPutStrLn stderr "You must have 8 difficulties (with optionally the empty difficulty) in your config file!"
-    exitFailure
-  let fixedOffs = if (length offs == 8) then (offs ++ [head offs]) else offs
 
   -- Write stuff now
   inFile <- openFile inFileName ReadMode
@@ -51,7 +48,7 @@ main = do
   cpBytes [1..startOfCMArea]
   -- Write challenge mode entries
   hPutStrLn stderr "Writing challenge mode entries..."
-  writeAllEntries outFile diffs
+  writeAllEntries outFile allEntries
   -- Random junk
   hPutStrLn stderr "Writing dummy data to fill some space..."
   posAfterWritingDiffs <- hTell outFile
@@ -62,7 +59,7 @@ main = do
   cpBytes [endOfCMArea..firstOffset-1]
   -- Write offset table
   hPutStrLn stderr "Writing offset table..."
-  writeOffsetTable inFile outFile fixedOffs
+  writeOffsetTable inFile outFile offs
   -- Copy the rest
   hPutStrLn stderr "Copying the rest of file..."
   hSeek inFile AbsoluteSeek afterOffsetTable

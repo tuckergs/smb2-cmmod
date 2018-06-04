@@ -1,13 +1,13 @@
 
 {-# LANGUAGE LambdaCase #-}
 
-module EntryStuff (Entry(..),Difficulty,
+module EntryStuff (Entry(..),EntryList,
                     maxSize,magicNumber,
                     startOfCMArea,endOfCMArea,
                     firstOffset,afterOffsetTable,sizeOfRel,
                     writeEntry,writeAllEntries,
                     entrySize,diffSize,
-                    offsetsAndSize,writeOffset,writeOffsetTable) where
+                    computeOffsets,writeOffset,writeOffsetTable) where
 
 
 import Control.Applicative
@@ -18,6 +18,7 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Builder as BB
 import Data.Monoid
 import Data.Char
+import Data.List
 import Data.Word
 import System.Environment
 import System.Exit
@@ -30,7 +31,7 @@ import ParseMonad
 data Entry = EndOfEntries | Entry { getStgID :: Word16 , getTimeAlotted :: Maybe Word16 , isLastStage :: Bool }
   deriving Show
 
-type Difficulty = [Entry]
+type EntryList = [Entry]
 
 ------ IMPORTANT CONSTANTS ------
 
@@ -88,7 +89,7 @@ writeEntry handle (Entry stgID timeAlotted isEnd) = BB.hPutBuilder handle $
           <> BB.word32BE 0x02010000
           <> BB.word16BE 0x0000 <> BB.word16BE tm
 
-writeAllEntries :: Handle -> [Difficulty] -> IO ()
+writeAllEntries :: Handle -> [EntryList] -> IO ()
 writeAllEntries handle diffs = (mapM_ (writeEntry handle) $ concat diffs) >> hFlush handle
 
 
@@ -102,11 +103,11 @@ entrySize EndOfEntries = 0x1C
 entrySize (Entry _ Nothing _) = 0x54
 entrySize (Entry _ (Just _) _) = 0x70
 
-diffSize :: Difficulty -> Word16
+diffSize :: EntryList -> Word16
 diffSize diff = sum $ map entrySize diff
 
 -- Offsets of the difficulties from 0x2075B0, as well as the size of all the entries
-offsetsAndSize :: [Difficulty] -> ([Word16],Word16)
+offsetsAndSize :: [EntryList] -> ([Word16],Word16)
 offsetsAndSize = loop (0,[0]) 
   where 
     loop (accum,curOffsets) = \case
@@ -114,6 +115,23 @@ offsetsAndSize = loop (0,[0])
       (d:ds) -> 
         let newOffset = accum + diffSize d
         in loop (newOffset,newOffset:curOffsets) ds
+
+-- Compute offsets given the pairs of slot ids with their entry lists
+computeOffsets :: [([Int],EntryList)] -> ([Word16],Word16)
+computeOffsets pairs = 
+  let 
+    (offsets,sz) = offsetsAndSize $ map snd pairs
+    offsetPairs = zip (map fst pairs) $ offsets -- Replace entry lists with their size
+    offsetList = concat $ flip map offsetPairs $ \(ls,off) -> map (flip (,) off) ls -- Breaks up slot IDs into different pairs
+    offsetList2 = (offsetList ++) $ flip zip (repeat 0x0) $ ([1..9] \\) $ map fst offsetList -- Adds other difficulties in unspecified
+    cmpPairsBySlotID (a,_) (b,_)
+      | a < b = LT
+      | a == b = EQ
+      | a > b = GT
+    sortedOffsetList = sortBy cmpPairsBySlotID offsetList2
+  in (map snd sortedOffsetList,sz)
+
+  
 
 -- inFile must be at the stuff after the offset
 writeOffset :: Handle -> Handle -> Word16 -> IO ()

@@ -1,0 +1,51 @@
+
+#beginEntryList dummy
+103
+103
+103
+103
+103
+103
+103
+103
+103
+103
+#endEntryList
+
+#beginEntryList ad
+221
+222
+223 480
+#endEntryList
+
+#beginEntryList adex
+251
+252
+253
+254
+255
+336
+337
+338
+339
+345
+346
+347
+348
+349
+350
+#endEntryList
+
+
+
+#beginEntryList be
+201
+202
+340
+340
+#endEntryList
+
+#diff Beginner be
+#diff Advanced ad
+#diff AdvancedExtra adex
+#diff Unused dummy

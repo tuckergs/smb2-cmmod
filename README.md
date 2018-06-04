@@ -24,12 +24,13 @@ Many sample configs can be found in the cfgs folder.
 
 ## Sample configs
 
-simpleConfig.txt is a config that gives you the difficulties that you see in vanilla SMB2. The entries take up significantly less space than with the vanilla REL
+simpleConfig.new.txt is a config that gives you the difficulties that you see in vanilla SMB2. The entries take up significantly less space than with the vanilla REL
 
-halfTimeConfig.txt keeps the level order the same as in vanilla SMB2, but halves the time alloted for each level. The entries almost take up the whole space alloted for the entries (28 bytes less than max size)
+halfTimeConfig.new.txt keeps the level order the same as in vanilla SMB2, but halves the time alloted for each level. The entries almost take up the whole space alloted for the entries (28 bytes less than max size)
 
-modRelConfig.txt follows the stage ID conventions set forth by the alternative REL that separates the story stage IDs from the challenge stage IDs, and avoids Totalitarianism and Nintendo. I highly recommend that if you use this config, use the alternative REL as your input REL.
+modRelConfig.new.txt follows the stage ID conventions set forth by the alternative REL that separates the story stage IDs from the challenge stage IDs, and avoids Totalitarianism and Nintendo. It is intended to be a template for your use. I highly recommend that if you use this config, use the alternative REL as your input REL.
 
+stupidConfig.new.txt shows more of what my config format can do. It shows you that you could make your difficulties have arbitrary size, although there are problems with making a difficulty bigger than normal; I found that after playing my fifteen level Advanced Extra, I had five levels of Expert Extra unlocked when I hadn't touched Expert. It also shows that you could specify the entries for Beginner, Advanced, and Advanced Extra and not specify the other difficulties. If you don't specify a difficulty, then that difficulty uses the first entry list such that there is a difficulty declaration that mentions its name. Order is in respect to the position of the entry list in the config. Separately, you could also manually set two difficulties to point to the same entry list
 
 ## Credits
 
