@@ -1,0 +1,86 @@
+
+% Fun mode config
+% 6 stages in Master, with 20 seconds allotted for each level
+% 30 stages in Master Extra, with stages originally 
+%   from Advanced Extra, World 10, Master, and Master Extra. 
+%   Stages from Advanced Extra and World 10 have reduced time 
+%   to make them more challenging, save for Labyrinth and Teapot
+% Expert and Expert Extra are Serial Jump and Conical Slider, respectively
+% The rest of the difficulties point to Beta Double Twin
+
+
+
+#beginEntryList dummy
+74  % Beta Double Twin
+#endEntryList
+
+#diff Unused dummy 
+
+
+#beginEntryList ex
+301  % Serial Jump
+#endEntryList
+
+#diff Expert ex
+
+
+#beginEntryList exex
+318  % Conical Slider
+#endEntryList
+
+#diff ExpertExtra exex
+
+
+#beginEntryList ma
+321 1200 % Centrifugal
+322 1200 % Swing Bridges
+323 1200 % Cylinders
+324 1200 % Passage
+325 1200 % Notch
+63  1200 % Flat Maze
+#endEntryList
+
+#diff Master ma
+
+
+#beginEntryList maex
+
+331      % Var Width
+332      % Strikers
+258 1800 % Long Slider
+346      % Labyrinth
+343 1800 % Mountain
+
+334      % Planets
+348 1800 % Revolution
+347 2700 % Postmodern
+259 1800 % Grid Bridge
+345 1800 % 3D Maze
+
+337      % Synchronized
+341 1800 % Training
+257 1800 % Amida Lot
+344 1800 % Disorder
+260 1800 % Teapot
+
+326      % Intermittent
+336      % 6 Seesaws
+349 2400 % Invisible
+329      % Double Twin
+350 1800 % Created By
+
+256 1800 % Domes
+328      % Spasmodic
+335      % Sliced Cheese
+330      % Clock Face
+333      % Ooparts
+
+339      % Dizzy System
+327      % Long Torus
+338      % Helix
+342 1800 % Gimmick
+340      % Nintendo
+
+#endEntryList
+
+#diff MasterExtra maex
