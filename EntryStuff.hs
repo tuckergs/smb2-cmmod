@@ -2,6 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 
 module EntryStuff (Entry(..),EntryList,
+                    GoalType(..),goalTypeToID,GoalEntry,
                     maxSize,magicNumber,
                     startOfCMArea,endOfCMArea,
                     firstOffset,afterOffsetTable,sizeOfRel,
@@ -27,8 +28,17 @@ import System.IO
 import HexStuff
 import ParseMonad
 
+data GoalType = BlueG | GreenG | RedG
+  deriving (Show, Eq, Ord)
 
-data Entry = EndOfEntries | Entry { getStgID :: Word16 , getTimeAlotted :: Maybe Word16 , isLastStage :: Bool }
+goalTypeToID :: GoalType -> Word32
+goalTypeToID BlueG = 0
+goalTypeToID GreenG = 1
+goalTypeToID RedG = 2
+
+type GoalEntry = (GoalType,Word32)
+
+data Entry = EndOfEntries | Entry { getStgID :: Word16 , getTimeAlotted :: Maybe Word16 , getGoalList :: [GoalEntry], isLastStage :: Bool }
   deriving Show
 
 type EntryList = [Entry]
@@ -73,13 +83,11 @@ fiveBlock = BB.lazyByteString $ BL.pack $ take 20 $ repeat 0x00
 
 writeEntry :: Handle -> Entry -> IO ()
 writeEntry handle EndOfEntries = BB.hPutBuilder handle $ BB.word32BE 0x03000000 <> sixBlock
-writeEntry handle (Entry stgID timeAlotted isEnd) = BB.hPutBuilder handle $
+writeEntry handle (Entry stgID timeAlotted goalList isEnd) = BB.hPutBuilder handle $
   BB.word32BE 0x02000000
   <> BB.word16BE 0x0000 <> BB.word16BE stgID
   <> timeBuilder
-  <> twelveBlock
-  <> (BB.word32BE $ if isEnd then 0x01020000 else 0x01000000)
-  <> (BB.word32BE $ if isEnd then 0x00000000 else 0x00000001)
+  <> goalListBuilder
   <> fiveBlock
     where 
       timeBuilder = case timeAlotted of
@@ -88,6 +96,28 @@ writeEntry handle (Entry stgID timeAlotted isEnd) = BB.hPutBuilder handle $
           fiveBlock
           <> BB.word32BE 0x02010000
           <> BB.word16BE 0x0000 <> BB.word16BE tm
+      singleGoalBuilder (ty,dist) =
+          twelveBlock
+        <> BB.word32BE 0x00020000
+        <> BB.word32BE (goalTypeToID ty)
+        <> fiveBlock
+        <> BB.word32BE 0x01000000
+        <> BB.word32BE dist
+      goalListBuilder =
+        if isEnd
+          then
+            twelveBlock
+            <> BB.word32BE 0x01020000
+            <> BB.word32BE 0x00000000
+          else
+            case goalList of
+              [] ->
+                twelveBlock
+                <> BB.word32BE 0x01000000
+                <> BB.word32BE 0x00000001
+              _ -> 
+                mconcat $ map singleGoalBuilder goalList
+
 
 writeAllEntries :: Handle -> [EntryList] -> IO ()
 writeAllEntries handle diffs = (mapM_ (writeEntry handle) $ concat diffs) >> hFlush handle
@@ -100,8 +130,20 @@ type Offset = Maybe
 -- The size of an challenge mode entry
 entrySize :: Entry -> Word16
 entrySize EndOfEntries = 0x1C
-entrySize (Entry _ Nothing _) = 0x54
-entrySize (Entry _ (Just _) _) = 0x70
+entrySize (Entry _ timeAllottedMaybe goalList isEnd) = sz
+  where 
+    numFromTime = case timeAllottedMaybe of
+      Nothing -> 0
+      Just _ -> 0x1C
+    numFromGoals = if ((null goalList) || isEnd)
+      then 0x38
+      else (0x54*) $ fromIntegral $ length goalList
+    sz = 0x08 + numFromTime + numFromGoals + 0x14
+
+    
+
+-- entrySize (Entry _ Nothing _) = 0x54
+-- entrySize (Entry _ (Just _) _) = 0x70
 
 diffSize :: EntryList -> Word16
 diffSize diff = sum $ map entrySize diff

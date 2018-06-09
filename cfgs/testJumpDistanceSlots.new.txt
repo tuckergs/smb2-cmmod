@@ -1,0 +1,39 @@
+#jumpDistanceSlots >260
+
+% For every slot in Beginner, Beginner Extra, Advanced, Advanced Extra, you can't set a jump distance for it, but you don't need to specify goals
+% For every slot in Expert, Expert Extra, Master, Master Extra, World 10, you can set jump distances, but you must specify all goals
+
+
+
+#beginEntryList dummy
+293
+#endEntryList
+
+#diff Unused dummy
+
+#beginEntryList be
+261 1800 | blue=1               % Wormhole
+204 | blue=1 green=3            % Switches (green goal should't go to 5, but should go to 4)
+221                             % Banks
+228                             % Inchworms (normal stuff; green should go to 6
+226                             % Swell
+324 1200 | blue=1 green=3       % Passage (should go to stage 9; that is, 3 stages)
+325                             % Notch
+334                             % Planets (red goal shouldn't work)
+349 2400                        % Invisible
+304 1800 | blue green           % Chipped Pipes (as normal)
+307                             % Corkscrew
+332                             % Strikers (shouldn't warp)
+336                             % 6 Seesaws
+301 | blue=23 green=46 red=69   % Serial Jump (no goal warps)
+#endEntryList
+
+#diff Beginner be
+
+
+#beginEntryList beex
+350 1800
+#endEntryList
+
+#diff BeginnerExtra beex
+

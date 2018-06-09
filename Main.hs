@@ -17,6 +17,7 @@ import System.IO
 import HexStuff
 import ParseMonad
 
+import CodeStuff
 import ConfigStuff
 import EntryStuff
 
@@ -27,7 +28,7 @@ main = do
   let (inFileName:configFileName:outFileName:_) = args
 
   -- Read config and set up things
-  cfgPairs <- readConfig configFileName
+  (cfgPairs,jumpDistanceSlotsMaybe) <- readConfig configFileName
   let (offs,sz) = computeOffsets cfgPairs
       allEntries = map snd cfgPairs
   hPutStrLn stderr $ "Bytes needed to output entries: 0x" ++ (show $ Hex sz)
@@ -43,9 +44,21 @@ main = do
   hSetBuffering outFile (BlockBuffering Nothing)
   let cpByte = hGetChar inFile >>= hPutChar outFile
       cpBytes ls = (mapM_ (const cpByte) ls) >> hFlush outFile
+  -- Copy up to jump distance code
+  hPutStrLn stderr "Copying bytes up to jump distance code..."
+  cpBytes [1..startOfJumpDistanceCode]
+  -- Write jump distance code
+  case jumpDistanceSlotsMaybe of
+    Nothing -> do
+      hPutStrLn stderr "No jump distance slots specified. Defaulting to == 0"
+      writeJumpDistanceCode inFile outFile (Equal,0)
+      -- cpBytes [1..8]
+    Just jumpDistanceSlots -> do
+      hPutStrLn stderr "Writing jump distance code..."
+      writeJumpDistanceCode inFile outFile jumpDistanceSlots
   -- Copy up to challenge mode entries
-  hPutStrLn stderr "Copying bytes up to challenge mode entries..."
-  cpBytes [1..startOfCMArea]
+  hPutStrLn stderr "Copying up to challenge mode entry area..."
+  cpBytes [startOfJumpDistanceCode+8..startOfCMArea-1]
   -- Write challenge mode entries
   hPutStrLn stderr "Writing challenge mode entries..."
   writeAllEntries outFile allEntries

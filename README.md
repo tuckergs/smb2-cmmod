@@ -32,7 +32,7 @@ modRelConfig.new.txt follows the stage ID conventions set forth by the alternati
 
 stupidConfig.new.txt shows more of what my config format can do. It shows you that you could make your difficulties have arbitrary size, although there are problems with making a difficulty bigger than normal; I found that after playing my fifteen level Advanced Extra, I had five levels of Expert Extra unlocked when I hadn't touched Expert. It also shows that you could specify the entries for Beginner, Advanced, and Advanced Extra and not specify the other difficulties. If you don't specify a difficulty, then that difficulty uses the first entry list such that there is a difficulty declaration that mentions its name. Order is in respect to the position of the entry list in the config. Separately, you could also manually set two difficulties to point to the same entry list
 
-funmodewiththirtymaex.new.txt shows that you could have a thirty level Master Extra. It was also fun to play through Master and Master Extra using this config, as it includes Advanced Extra levels and World 10 levels with reduced time allotted values, and the level order forces you to play through a lot of hard stages.
+testJumpDistanceSlots.new.txt shows you that you could specify a range of level slots that let you use goals that have arbitrary warp distance; that is, these slots allow you to make a red goal that allows you to warp from Level 18 to Level 25. Note that in these slots, you must specify every goal in the level.
 
 ## Notes
 

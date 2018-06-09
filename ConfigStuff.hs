@@ -11,6 +11,7 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Builder as BB
 import Data.Monoid
 import Data.Char
+import Data.List
 import Data.Word
 import System.Environment
 import System.Exit
@@ -20,6 +21,7 @@ import Helpers
 import HexStuff
 import ParseMonad
 
+import CodeStuff
 import EntryStuff
 
 ------ READ CONFIG SCHTUFF ------
@@ -38,7 +40,7 @@ diffNameToInt _ = Nothing
 
 comment = ws <|> (ws >> token '%' >> list item)
 
-parseNum :: Parse String Word16
+parseNum :: Read a => Parse String a
 parseNum = fmap read $ (list1 $ spot $ isDigit) <|> (tokens "0x" >> fmap ("0x"++) (list1 $ spot $ isHexDigit))
 
 parseName :: Parse String String
@@ -59,19 +61,56 @@ parseEntryListLine = (comment >> return Nothing) <|> entryLine <|> endOfEntryLin
       ws
       stgID <- parseNum
       timeAlotted <- parseNoTime <|> parseYesTime  
-      return $ Just $ Entry { getStgID = stgID , getTimeAlotted = timeAlotted , isLastStage = False } -- isLastStage will be set in fixEntries
-    parseNoTime = do
-      comment
-      return Nothing
+      goalList <- parseNoGoalData <|> parseYesGoalData
+      return $ Just $ Entry { getStgID = stgID , getTimeAlotted = timeAlotted , getGoalList = goalList , isLastStage = False } -- isLastStage will be set in fixEntries
+    parseNoTime = return Nothing
     parseYesTime = do
       ws1
       time <- parseNum
-      comment
       return $ Just time
+    parseNoGoalData = comment >> return []
+    parseYesGoalData = do
+      ws1
+      token '|'
+      goalListMaybes <- list1 $ do
+        ws1
+        goalName <- parseName
+        let store = [("blue",BlueG),("green",GreenG),("red",RedG)]
+        case lookup (map toLower goalName) store of
+          Nothing -> return Nothing
+          Just goalType -> do
+            goalDist <- ((return $ (+1) $ goalTypeToID goalType) <|>) $ do
+              token '='
+              parseNum
+            return $ Just (goalType,goalDist)
+      let cmpGoalEntries (ty1,_) (ty2,_) = compare ty1 ty2
+      goalEntries <- fmap (sortBy cmpGoalEntries) $ flip fix goalListMaybes $ \loop -> \case
+        [] -> return []
+        (Nothing:_) -> empty
+        ((Just g):gMaybes) -> do
+          gs <- loop gMaybes
+          return (g:gs)
+      let 
+        hasDuplicates = not $ null $ do
+          let goalTypesWithIndices = zip [0..] $ map fst goalEntries
+          (i,ty1) <- goalTypesWithIndices
+          (j,ty2) <- goalTypesWithIndices
+          guard (ty1 == ty2)
+          guard (i /= j)
+          return "erg"
+      when hasDuplicates $ empty
+      comment
+      return goalEntries
+
+        
+        
+
+data NormalLine = DiffLine (Int,String) | BeginEntryListLine String | JumpDistanceSlotsLine (Op,Word16)
 
 
-parseNormalLine :: Parse String (Maybe (Either String (Int,String)))
-parseNormalLine = (comment >> return Nothing) <|> beginEntryListLine <|> diffLine
+
+parseNormalLine :: Parse String (Maybe NormalLine)
+parseNormalLine = (comment >> return Nothing) <|> beginEntryListLine <|> diffLine <|> jumpDistanceSlotsLine
   where 
     beginEntryListLine = do
       ws
@@ -79,7 +118,7 @@ parseNormalLine = (comment >> return Nothing) <|> beginEntryListLine <|> diffLin
       ws1
       name <- parseName
       comment
-      return $ Just $ Left name
+      return $ Just $ BeginEntryListLine name
     diffLine = do
       ws
       tokens "#diff"
@@ -91,13 +130,30 @@ parseNormalLine = (comment >> return Nothing) <|> beginEntryListLine <|> diffLin
           ws1
           listEntryName <- parseName
           comment
-          return $ Just $ Right (slotID,listEntryName)
+          return $ Just $ DiffLine (slotID,listEntryName)
+    jumpDistanceSlotsLine = do
+      ws
+      tokens "#jumpDistanceSlots"
+      ws1
+      op <- 
+        (tokens "==" >> return Equal)
+        <|> (tokens "!=" >> return NotEqual)
+        <|> (tokens ">=" >> return GreaterThanEqual)
+        <|> (tokens "<=" >> return LessThanEqual)
+        <|> (token '>' >> return GreaterThan)
+        <|> (token '<' >> return LessThan)
+      ws
+      num <- parseNum
+      comment
+      return $ Just $ JumpDistanceSlotsLine (op,num)
+
+
 
       
   
 
 -- This returns the unzip of a list of pairs of a entry list with the list of associated difficulty slots
-readConfig :: String -> IO [([Int],EntryList)]
+readConfig :: String -> IO ([([Int],EntryList)], Maybe (Op,Word16))
 readConfig cfgFileName = do
   cfgFile <- openFile cfgFileName ReadMode
   allLns <- fmap lines $ hGetContents cfgFile
@@ -106,10 +162,10 @@ readConfig cfgFileName = do
   return rt
 
 -- 
-parseConfig :: [String] -> IO [([Int],EntryList)]
+parseConfig :: [String] -> IO ([([Int],EntryList)], Maybe (Op,Word16))
 parseConfig allLns =
-  flip fix (1,allLns,[],[],[],Nothing) $ 
-    \loop (curLineNum,curLns,curEntryLists,curDiffMap,tmpEntryList,curEntryListNameMaybe) -> do
+  flip fix (1,allLns,[],[],[],Nothing,Nothing) $ 
+    \loop (curLineNum,curLns,curEntryLists,curDiffMap,tmpEntryList,curEntryListNameMaybe,curJumpDistanceSlots) -> do
       let err = die $ "Error on line " ++ (show curLineNum)
       case curLns of
         [] -> do
@@ -133,19 +189,21 @@ parseConfig allLns =
                 guard $ listID1 == listID2
                 return (reverse slotIDs,el)
           -- Return pairs
-          return $ pairs
+          return $ (pairs,curJumpDistanceSlots)
 
         (ln:lns) -> do
-          let cont = loop (curLineNum+1,lns,curEntryLists,curDiffMap,tmpEntryList,curEntryListNameMaybe)
+          let cont = loop (curLineNum+1,lns,curEntryLists,curDiffMap,tmpEntryList,curEntryListNameMaybe,curJumpDistanceSlots)
           case curEntryListNameMaybe of
             Nothing -> do -- We are not reading an entry list
               case parse parseNormalLine ln of
                 Left _ -> err -- Bad parse
                 Right Nothing -> cont -- A comment
-                Right (Just (Left name)) -> -- We saw #beginEntryList
-                  loop (curLineNum+1,lns,curEntryLists,curDiffMap,[],Just name) -- Clear tmp list, update entry list name
-                Right (Just (Right diff)) -> -- We saw #diff
-                  loop (curLineNum+1,lns,curEntryLists,diff:curDiffMap,tmpEntryList,curEntryListNameMaybe) -- Add diff declaration
+                Right (Just (BeginEntryListLine name)) -> -- We saw #beginEntryList
+                  loop (curLineNum+1,lns,curEntryLists,curDiffMap,[],Just name,curJumpDistanceSlots) -- Clear tmp list, update entry list name
+                Right (Just (DiffLine diff)) -> -- We saw #diff
+                  loop (curLineNum+1,lns,curEntryLists,diff:curDiffMap,tmpEntryList,curEntryListNameMaybe,curJumpDistanceSlots) -- Add diff declaration
+                Right (Just (JumpDistanceSlotsLine jd)) -> -- We saw #jumpDistanceSlotsLine
+                  loop (curLineNum+1,lns,curEntryLists,curDiffMap,tmpEntryList,curEntryListNameMaybe,Just jd)
             Just curEntryListName -> do -- We are in entry list
               case parse parseEntryListLine ln of
                 Left _ -> err -- Bad parse
@@ -158,9 +216,9 @@ parseConfig allLns =
                         (e:es) ->
                           let lastE = e { isLastStage = True } -- Last stage bit set
                           in lastE:es 
-                  loop (curLineNum+1,lns,(curEntryListName,fixedEntries):curEntryLists,curDiffMap,[],Nothing) -- Add entry list, reset tmp list and name
+                  loop (curLineNum+1,lns,(curEntryListName,fixedEntries):curEntryLists,curDiffMap,[],Nothing,curJumpDistanceSlots) -- Add entry list, reset tmp list and name
                 Right (Just entry) ->  -- We saw an entry
-                  loop (curLineNum+1,lns,curEntryLists,curDiffMap,entry:tmpEntryList,curEntryListNameMaybe) -- Add entry to tmp list
+                  loop (curLineNum+1,lns,curEntryLists,curDiffMap,entry:tmpEntryList,curEntryListNameMaybe,curJumpDistanceSlots) -- Add entry to tmp list
 
               
 
