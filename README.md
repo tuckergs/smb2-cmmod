@@ -8,10 +8,16 @@ This is a program that modifies the challenge mode difficulties in mkb2.main_loo
 
 This program is written in Haskell. If you don't already have Haskell, I'd recommend getting Haskell Platform.
 
-You can then compile the code using
+I have a simple Makefile. You can compile the code using
 ```
-ghc Main.hs
+make
 ```
+
+As per the L2 norm, you can also run
+```
+make clean
+```
+to get rid of the executable and stuff
 
 ## Usage
 
@@ -19,6 +25,7 @@ The usage is as follows
 ```
 ./Main [input REL] [config] [output REL]
 ```
+You would replace the "./Main" with "Main.exe" if you are using Windows prompts
 
 Many sample configs can be found in the cfgs folder.
 

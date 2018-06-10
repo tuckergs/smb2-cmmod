@@ -161,66 +161,97 @@ readConfig cfgFileName = do
   hClose cfgFile
   return rt
 
+data ConfigLoopRecord = CLR { getLineNum :: Int , 
+                              getLines :: [String] , 
+                              getEntryLists :: [(String,EntryList)] , 
+                              getDiffMap :: [(Int,String)] ,
+                              getTmpEntryList :: EntryList ,
+                              getEntryListNameMaybe :: Maybe String ,
+                              getJumpDistanceSlotsMaybe :: Maybe (Op,Word16)
+                            }
+
 -- 
 parseConfig :: [String] -> IO ([([Int],EntryList)], Maybe (Op,Word16))
 parseConfig allLns =
-  flip fix (1,allLns,[],[],[],Nothing,Nothing) $ 
-    \loop (curLineNum,curLns,curEntryLists,curDiffMap,tmpEntryList,curEntryListNameMaybe,curJumpDistanceSlots) -> do
-      let err = die $ "Error on line " ++ (show curLineNum)
-      case curLns of
-        [] -> do
-          let fixedEntryLists = reverse curEntryLists
-          -- Check if difficulty declared twice
-          when (length curDiffMap /= (length $ noDups $ map fst curDiffMap)) $
-            die "A difficulty is declared twice"
-          -- Check if difficulty declaration has entry list id that is undefined
-          when (length curDiffMap /= length [ 1 | (_,listID) <- curDiffMap , elem listID (map fst fixedEntryLists)]) $ 
-            die "A difficulty declaration points to a entry list that doesn\'t exist"
-          -- Check if two entry lists have same ID
-          when (length fixedEntryLists /= (length $ noDups $ map fst fixedEntryLists)) $ do
-            die "Two entry lists have same ID"
-          -- Compute pairs 
-          let listEntryStrs = noDups $ map snd curDiffMap
-              -- compactDiffMap combines pairs with like entry list ids
-              compactDiffMap = flip map listEntryStrs $ \s -> flip (,) s $ map fst $ flip filter curDiffMap $ (==s) . snd
-              pairs = do
-                (listID1,el) <- fixedEntryLists
-                (slotIDs,listID2) <- compactDiffMap
-                guard $ listID1 == listID2
-                return (reverse slotIDs,el)
-          -- Return pairs
-          return $ (pairs,curJumpDistanceSlots)
+  let 
+    initRecord = CLR { getLineNum = 1 ,
+                          getLines = allLns ,
+                          getEntryLists = [] ,
+                          getDiffMap = [] ,
+                          getTmpEntryList = [] ,
+                          getEntryListNameMaybe = Nothing ,
+                          getJumpDistanceSlotsMaybe = Nothing
+                        }
+  in 
+    flip fix initRecord $ 
+      \loop curRecord -> do
+        let err = die $ "Error on line " ++ (show curLineNum)
+            curLineNum = getLineNum curRecord
+            curLns = getLines curRecord
+            curEntryLists = getEntryLists curRecord
+            curDiffMap = getDiffMap curRecord
+            tmpEntryList = getTmpEntryList curRecord
+            curEntryListNameMaybe = getEntryListNameMaybe curRecord
+            curJumpDistanceSlotsMaybe = getJumpDistanceSlotsMaybe curRecord
+        case curLns of
+          [] -> do
+            let fixedEntryLists = reverse curEntryLists
+            -- Check if difficulty declared twice
+            when (length curDiffMap /= (length $ noDups $ map fst curDiffMap)) $
+              die "A difficulty is declared twice"
+            -- Check if difficulty declaration has entry list id that is undefined
+            when (length curDiffMap /= length [ 1 | (_,listID) <- curDiffMap , elem listID (map fst fixedEntryLists)]) $ 
+              die "A difficulty declaration points to a entry list that doesn\'t exist"
+            -- Check if two entry lists have same ID
+            when (length fixedEntryLists /= (length $ noDups $ map fst fixedEntryLists)) $ do
+              die "Two entry lists have same ID"
+            -- Compute pairs 
+            let listEntryStrs = noDups $ map snd curDiffMap
+                -- compactDiffMap combines pairs with like entry list ids
+                compactDiffMap = flip map listEntryStrs $ \s -> flip (,) s $ map fst $ flip filter curDiffMap $ (==s) . snd
+                pairs = do
+                  (listID1,el) <- fixedEntryLists
+                  (slotIDs,listID2) <- compactDiffMap
+                  guard $ listID1 == listID2
+                  return (reverse slotIDs,el)
+            -- Return pairs
+            return $ (pairs,curJumpDistanceSlotsMaybe)
 
-        (ln:lns) -> do
-          let cont = loop (curLineNum+1,lns,curEntryLists,curDiffMap,tmpEntryList,curEntryListNameMaybe,curJumpDistanceSlots)
-          case curEntryListNameMaybe of
-            Nothing -> do -- We are not reading an entry list
-              case parse parseNormalLine ln of
-                Left _ -> err -- Bad parse
-                Right Nothing -> cont -- A comment
-                Right (Just (BeginEntryListLine name)) -> -- We saw #beginEntryList
-                  loop (curLineNum+1,lns,curEntryLists,curDiffMap,[],Just name,curJumpDistanceSlots) -- Clear tmp list, update entry list name
-                Right (Just (DiffLine diff)) -> -- We saw #diff
-                  loop (curLineNum+1,lns,curEntryLists,diff:curDiffMap,tmpEntryList,curEntryListNameMaybe,curJumpDistanceSlots) -- Add diff declaration
-                Right (Just (JumpDistanceSlotsLine jd)) -> -- We saw #jumpDistanceSlotsLine
-                  loop (curLineNum+1,lns,curEntryLists,curDiffMap,tmpEntryList,curEntryListNameMaybe,Just jd)
-            Just curEntryListName -> do -- We are in entry list
-              case parse parseEntryListLine ln of
-                Left _ -> err -- Bad parse
-                Right Nothing -> cont -- Comment
-                Right (Just EndOfEntries) -> do -- We saw #endEntryList
-                  let 
-                    fixedEntries = reverse $ (EndOfEntries:) $ -- Add EndOfEntries and put the list in normal order
-                      case tmpEntryList of
-                        [] -> []
-                        (e:es) ->
-                          let lastE = e { isLastStage = True } -- Last stage bit set
-                          in lastE:es 
-                  loop (curLineNum+1,lns,(curEntryListName,fixedEntries):curEntryLists,curDiffMap,[],Nothing,curJumpDistanceSlots) -- Add entry list, reset tmp list and name
-                Right (Just entry) ->  -- We saw an entry
-                  loop (curLineNum+1,lns,curEntryLists,curDiffMap,entry:tmpEntryList,curEntryListNameMaybe,curJumpDistanceSlots) -- Add entry to tmp list
+          (ln:lns) -> do
+            let contRecord = curRecord { getLineNum = curLineNum + 1 , getLines = lns }
+                cont = loop contRecord
+            case curEntryListNameMaybe of
+              Nothing -> do -- We are not reading an entry list
+                case parse parseNormalLine ln of
+                  Left _ -> err -- Bad parse
+                  Right Nothing -> cont -- A comment
+                  Right (Just (BeginEntryListLine name)) -> -- We saw #beginEntryList
+                    loop $ contRecord { getTmpEntryList = [] , 
+                                        getEntryListNameMaybe = Just name 
+                                      } -- Clear tmp list, update entry list name
+                  Right (Just (DiffLine diff)) -> -- We saw #diff
+                    loop $ contRecord { getDiffMap = diff:curDiffMap } -- Add diff declaration
+                  Right (Just (JumpDistanceSlotsLine jd)) -> -- We saw #jumpDistanceSlotsLine
+                    loop $ contRecord { getJumpDistanceSlotsMaybe = Just jd } -- Add jump distance slots declaration
+              Just curEntryListName -> do -- We are in entry list
+                case parse parseEntryListLine ln of
+                  Left _ -> err -- Bad parse
+                  Right Nothing -> cont -- Comment
+                  Right (Just EndOfEntries) -> do -- We saw #endEntryList
+                    let 
+                      fixedEntries = reverse $ (EndOfEntries:) $ -- Add EndOfEntries and put the list in normal order
+                        case tmpEntryList of
+                          [] -> []
+                          (e:es) ->
+                            let lastE = e { isLastStage = True } -- Last stage bit set
+                            in lastE:es 
+                    loop $ contRecord { getEntryLists = (curEntryListName,fixedEntries):curEntryLists , 
+                                        getTmpEntryList = [] ,
+                                        getEntryListNameMaybe = Nothing
+                                      } -- Add entry list, reset tmp list and name
+                  Right (Just entry) ->  -- We saw an entry
+                    loop $ contRecord { getTmpEntryList = entry:tmpEntryList } -- Add entry to tmp list
 
-              
 
 ------ TEST CONFIGS ------
 config1 = ["#beginEntryList be","201","202 1800","203","#endEntryList","#beginEntryList un","#endEntryList","#beginEntryList ad","221","222","223 1800","#endEntryList","","#diff Beginner be","#diff Unused be","#diff Advanced ad"]
