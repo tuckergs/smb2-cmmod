@@ -1,7 +1,8 @@
+
 #jumpDistanceSlots >260
 
-% For every slot in Beginner, Beginner Extra, Advanced, Advanced Extra, you can't set a jump distance for it, but you don't need to specify goals
-% For every slot in Expert, Expert Extra, Master, Master Extra, World 10, you can set jump distances, but you must specify all goals
+% This config makes every slot in Beginner, Beginner Extra, Advanced, and Advanced Extra not a jump distance slot. That is, you can't set a jump distance for it, but you don't need to specify goals
+% This config makes every slot in Expert, Expert Extra, Master, Master Extra, and World 10 a jump distance slot. That is, you can set jump distances for these levels, but you must specify all goals
 
 
 

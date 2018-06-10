@@ -152,7 +152,7 @@ parseNormalLine = (comment >> return Nothing) <|> beginEntryListLine <|> diffLin
       
   
 
--- This returns the unzip of a list of pairs of a entry list with the list of associated difficulty slots
+-- This returns a list of pairs of a entry list with the list of associated difficulty slots, and a jump distance slot
 readConfig :: String -> IO ([([Int],EntryList)], Maybe (Op,Word16))
 readConfig cfgFileName = do
   cfgFile <- openFile cfgFileName ReadMode

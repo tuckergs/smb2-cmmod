@@ -19,6 +19,11 @@ make clean
 ```
 to get rid of the executable and compilation files
 
+If you don't have make, you can alternatively run
+```
+ghc Main.hs
+```
+
 ## Usage
 
 The usage is as follows
