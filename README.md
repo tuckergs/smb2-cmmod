@@ -17,7 +17,7 @@ As per the L2 norm, you can also run
 ```
 make clean
 ```
-to get rid of the executable and stuff
+to get rid of the executable and compilation files
 
 ## Usage
 
