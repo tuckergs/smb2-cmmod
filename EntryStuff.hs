@@ -1,15 +1,7 @@
 
 {-# LANGUAGE LambdaCase #-}
 
-module EntryStuff (Entry(..),EntryList,
-                    GoalType(..),goalTypeToID,GoalEntry,
-                    maxSize,magicNumber,
-                    startOfCMArea,endOfCMArea,
-                    firstOffset,afterOffsetTable,sizeOfRel,
-                    writeEntry,writeAllEntries,
-                    entrySize,diffSize,
-                    computeOffsets,writeOffset,writeOffsetTable) where
-
+module EntryStuff where
 
 import Control.Applicative
 import Control.Monad
@@ -25,23 +17,11 @@ import System.Environment
 import System.Exit
 import System.IO
 
+import Helpers
 import HexStuff
 import ParseMonad
+import Types
 
-data GoalType = BlueG | GreenG | RedG
-  deriving (Show, Eq, Ord)
-
-goalTypeToID :: GoalType -> Word32
-goalTypeToID BlueG = 0
-goalTypeToID GreenG = 1
-goalTypeToID RedG = 2
-
-type GoalEntry = (GoalType,Word32)
-
-data Entry = EndOfEntries | Entry { getStgID :: Word16 , getTimeAlotted :: Maybe Word16 , getGoalList :: [GoalEntry], isLastStage :: Bool }
-  deriving Show
-
-type EntryList = [Entry]
 
 ------ IMPORTANT CONSTANTS ------
 
@@ -51,7 +31,7 @@ magicNumber = 0x3550
 
 -- The maximum size the challenge mode entries can be
 maxSize :: Word16
-maxSize = 0x3E3C
+maxSize = 0x3C7C
 
 -- The start of the space alloted for the challenge mode entries
 startOfCMArea :: Integer
@@ -59,15 +39,15 @@ startOfCMArea = 0x2075B0
 
 -- The end of the challenge mode entry space. This is where the RAM pointer table starts
 endOfCMArea :: Integer
-endOfCMArea = 0x20B3EC
+endOfCMArea = 0x20B22C
 
 -- The first offset of the offset table
 firstOffset :: Integer
 firstOffset = 0x2C787A
 
 -- Where we leave off after writing the offset table
-afterOffsetTable :: Integer
-afterOffsetTable = 0x2C78DA
+afterRelevantOffsets :: Integer
+afterRelevantOffsets = 0x2C78C2
 
 sizeOfRel :: Integer
 sizeOfRel = 3000268
@@ -81,9 +61,9 @@ sixBlock = BB.lazyByteString $ BL.pack $ take 24 $ repeat 0x00
 fiveBlock = BB.lazyByteString $ BL.pack $ take 20 $ repeat 0x00
 
 
-writeEntry :: Handle -> Entry -> IO ()
-writeEntry handle EndOfEntries = BB.hPutBuilder handle $ BB.word32BE 0x03000000 <> sixBlock
-writeEntry handle (Entry stgID timeAlotted goalList isEnd) = BB.hPutBuilder handle $
+writeEntry :: Handle -> EntryType -> Entry -> IO ()
+writeEntry handle Vanilla EndOfEntries = BB.hPutBuilder handle $ BB.word32BE 0x03000000 <> sixBlock
+writeEntry handle Vanilla (Entry stgID timeAlotted _ goalList isEnd) = BB.hPutBuilder handle $
   BB.word32BE 0x02000000
   <> BB.word16BE 0x0000 <> BB.word16BE stgID
   <> timeBuilder
@@ -117,20 +97,97 @@ writeEntry handle (Entry stgID timeAlotted goalList isEnd) = BB.hPutBuilder hand
                 <> BB.word32BE 0x00000001
               _ -> 
                 mconcat $ map singleGoalBuilder goalList
+writeEntry handle BareBone EndOfEntries = BB.hPutBuilder handle $
+  BB.word32BE 0x03000000 <> BB.word32BE 0x0
+writeEntry handle BareBone (Entry stgID timeAllotted unlockData _ _) = BB.hPutBuilder handle $
+  BB.word16BE 0x0200
+  <> BB.word16BE stgID
+  <> timePart
+  <> unlockPart
+  where
+    timePart = BB.word16BE $ case timeAllotted of
+      Just tm -> tm
+      Nothing -> 3600
+    unlockPart = case unlockData of
+      Counter loc val -> BB.word8 loc <> BB.word8 val
+      BitField bit -> BB.word8 0xff <> BB.word8 bit
 
-
-writeAllEntries :: Handle -> [EntryList] -> IO ()
-writeAllEntries handle diffs = (mapM_ (writeEntry handle) $ concat diffs) >> hFlush handle
+writeAllEntries :: Handle -> EntryType -> [EntryList] -> IO ()
+writeAllEntries handle entryType diffs = (mapM_ (writeEntry handle entryType) $ concat diffs) >> hFlush handle
 
 
 ------ POINTER SCHTUFF ------
 
-type Offset = Maybe 
+-- Calculates the unlock data for the entries
+computeUnlockData :: [(Int,EntryList)] -> IO [(Int,EntryList)]
+computeUnlockData diffs = do
+  let
+    beDiffSet = [0,3]
+    adDiffSet = [1,4]
+    exDiffSet = [2,5,6,7]
+    diffSets = beDiffSet:adDiffSet:exDiffSet:[]
+    -- (numCounters,counterLocations) = fmap reverse $ brutalUncons $ tail $ foldl (\locs@(prevLoc,restLoc) n -> (prevLoc+n):locs) [0] $ counterDataForDiffList diffList
+    -- counterDataForDiffList = map $ (`div` 255) . fromIntegral . sum . map (length . flip brutalLookup diffs)
+    -- Pads entries with either True or False based on if it is skippable or not
+    entriesWithSkippability strippedEntryList = 
+      let
+        entriesWithLevelNums = zip [1..] strippedEntryList
+        skippableForEntry (levelNum,entry) = foldl union [] $ flip map (getGoalList entry) $ \(_,jd) -> take (fromIntegral jd-1) [(levelNum+1)..]
+        skippableLevelNums = foldl union [] $ map skippableForEntry entriesWithLevelNums
+        unskippableLevelNums = [1..(length strippedEntryList)] \\ skippableLevelNums
+        skippableEntryListWithNums = zip skippableLevelNums $ map (\n -> (brutalLookup n entriesWithLevelNums, True)) skippableLevelNums
+        unskippableEntryListWithNums = zip unskippableLevelNums $ map (\n -> (brutalLookup n entriesWithLevelNums, False)) unskippableLevelNums
+        pairSorter (n1,_) (n2,_) = compare n1 n2
+      in map snd $ sortBy pairSorter $ skippableEntryListWithNums ++ unskippableEntryListWithNums 
+    numSkippables = sum $ map (length . filter (\(_,isSkippable) -> isSkippable)) $ map (entriesWithSkippability . init) $ map snd diffs
+    numUnskippablesGivenDiffId diffId = length $ filter (\(_,isSkippable) -> not isSkippable) $ entriesWithSkippability $ init $ brutalLookup diffId diffs
+    numUnskippablesGivenDiffSet = sum . map numUnskippablesGivenDiffId
+    numCountersForAllDiffSets = map ((+1) . (`div` 255) . (+ (-1)) . numUnskippablesGivenDiffSet) diffSets
+    (numCounters,counterOffsets) = fmap reverse $ brutalUncons $ foldl (\offs@(prevOff:_) n -> (prevOff+n):offs) [0] $ numCountersForAllDiffSets
+
+  hPutStrLn stderr $ "Num counters needed: " ++ (show numCounters)
+  hPutStrLn stderr $ "Number of skippable levels: " ++ (show numSkippables)
+  when ((8*numCounters + numSkippables) > 160) $
+    die $ "You have either too many skippable levels (you can skip these in Challenge Mode) or just too many entries"
+  let 
+    initCounterData = take 3 $ repeat (0 :: Int)
+    counterDataToUse curCounterData diffId = 
+      let 
+        curIndex = brutalLookup diffId $ map (flip (,) 0) beDiffSet ++ map (flip (,) 1) adDiffSet ++ map (flip (,) 2) exDiffSet
+        curNumber = curCounterData !! curIndex
+        offset = counterOffsets !! curIndex
+        nextNumber = curNumber + 1
+        (whatLoc,whatValue) = curNumber `divMod` 255
+        nextCounterData = take curIndex curCounterData ++ [nextNumber] ++ drop (curIndex+1) curCounterData
+      in ((fromIntegral (whatLoc + offset),fromIntegral $ whatValue+1),nextCounterData)
+    addUnlockDataToEntryList (stepCounterData,stepBit) (diffId,entryList) = 
+      flip fix (entriesWithSkippability $ init entryList,[],stepCounterData,stepBit) $ \loop (curEntryListWithSkips,madeEntryList,curCounterData,curBit) ->
+        case curEntryListWithSkips of
+          [] -> ((diffId,reverse $ EndOfEntries:madeEntryList),(curCounterData,curBit))
+          ((entry,isSkippable):rest) -> 
+            if isSkippable
+              then 
+                let
+                  nextBit = curBit + 1
+                  fixedEntry = entry { getUnlockData = BitField curBit }
+                in loop $ (rest,fixedEntry:madeEntryList,curCounterData,nextBit)
+              else
+                let
+                  ((curLoc,curData),nextCounterData) = counterDataToUse curCounterData diffId
+                  fixedEntry = entry { getUnlockData = Counter curLoc curData }
+                in loop $ (rest,fixedEntry:madeEntryList,nextCounterData,curBit) 
+    addUnlockDataToAllEntryLists = flip fix (diffs,(initCounterData,fromIntegral $ 8*numCounters)) $ \loop (curDiffs,curCounterBitPair) ->
+      case curDiffs of
+        [] -> []
+        (diff:rest) ->
+          let (fixedDiff,nextCounterBitPair) = addUnlockDataToEntryList curCounterBitPair diff
+          in (fixedDiff:) $ loop (rest,nextCounterBitPair) 
+  return $ addUnlockDataToAllEntryLists
 
 -- The size of an challenge mode entry
-entrySize :: Entry -> Word16
-entrySize EndOfEntries = 0x1C
-entrySize (Entry _ timeAllottedMaybe goalList isEnd) = sz
+entrySize :: EntryType -> Entry -> Word16
+entrySize Vanilla EndOfEntries = 0x1C
+entrySize Vanilla (Entry _ timeAllottedMaybe _ goalList isEnd) = sz
   where 
     numFromTime = case timeAllottedMaybe of
       Nothing -> 0
@@ -139,30 +196,28 @@ entrySize (Entry _ timeAllottedMaybe goalList isEnd) = sz
       then 0x38
       else (0x54*) $ fromIntegral $ length goalList
     sz = 0x08 + numFromTime + numFromGoals + 0x14
+entrySize BareBone _ = 0x8
 
-    
 
--- entrySize (Entry _ Nothing _) = 0x54
--- entrySize (Entry _ (Just _) _) = 0x70
-
-diffSize :: EntryList -> Word16
-diffSize diff = sum $ map entrySize diff
+diffSize :: EntryType -> EntryList -> Word16
+diffSize entryType diff = sum $ map (entrySize entryType) diff
 
 -- Offsets of the difficulties from 0x2075B0, as well as the size of all the entries
-offsetsAndSize :: [EntryList] -> ([Word16],Word16)
-offsetsAndSize = loop (0,[0]) 
+offsetsAndSize :: EntryType -> [EntryList] -> ([Word16],Word16)
+offsetsAndSize entryType = loop (0,[0]) 
   where 
     loop (accum,curOffsets) = \case
       [] -> (\(sz:offs) -> (reverse offs,sz)) $ curOffsets
       (d:ds) -> 
-        let newOffset = accum + diffSize d
+        let newOffset = accum + diffSize entryType d
         in loop (newOffset,newOffset:curOffsets) ds
 
+
 -- Compute offsets given the pairs of slot ids with their entry lists
-computeOffsets :: [([Int],EntryList)] -> ([Word16],Word16)
-computeOffsets pairs = 
+computeOffsets :: EntryType -> [([Int],EntryList)] -> ([Word16],Word16)
+computeOffsets entryType pairs = 
   let 
-    (offsets,sz) = offsetsAndSize $ map snd pairs
+    (offsets,sz) = offsetsAndSize entryType $ map snd pairs
     offsetPairs = zip (map fst pairs) $ offsets -- Replace entry lists with their size
     offsetList = concat $ flip map offsetPairs $ \(ls,off) -> map (flip (,) off) ls -- Breaks up slot IDs into different pairs
     offsetList2 = (offsetList ++) $ flip zip (repeat 0x0) $ ([1..9] \\) $ map fst offsetList -- Adds other difficulties in unspecified
@@ -186,8 +241,8 @@ writeOffset inFile outFile off = do
 
 -- Note this makes the empty difficulty point to Master Extra
 writeOffsetTable :: Handle -> Handle -> [Word16] -> IO ()
-writeOffsetTable inFile outFile (off1:off2:off3:off4:off5:off6:off7:off8:off9:_) = do
+writeOffsetTable inFile outFile (off1:off2:off3:off4:off5:off6:off7:off8:_) = do
   hSeek inFile RelativeSeek 0x2
-  mapM_ (writeOffset inFile outFile) $ (off1:off2:off3:off4:off5:off6:off7:off8:off8:off9:off9:off9:[]) 
+  mapM_ (writeOffset inFile outFile) $ (off1:off2:off3:off4:off5:off6:off7:off8:off8:[]) 
   
 

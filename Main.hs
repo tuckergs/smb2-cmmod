@@ -20,6 +20,7 @@ import ParseMonad
 import CodeStuff
 import ConfigStuff
 import EntryStuff
+import Types
 
 main = do
   args <- getArgs
@@ -28,13 +29,21 @@ main = do
   let (inFileName:configFileName:outFileName:_) = args
 
   -- Read config and set up things
-  (cfgPairs,jumpDistanceSlotsMaybe) <- readConfig configFileName
-  let (offs,sz) = computeOffsets cfgPairs
-      allEntries = map snd cfgPairs
+  (cfgPairs,Opts theEntryType jumpDistanceSlotsMaybe) <- readConfig configFileName
+  let (offs,sz) = computeOffsets theEntryType cfgPairs
   hPutStrLn stderr $ "Bytes needed to output entries: 0x" ++ (show $ Hex sz)
   when (sz > maxSize) $ do
-    hPutStrLn stderr "The entries won't fit! You need to use under 0x3E3C bytes!"
+    hPutStrLn stderr "The entries won't fit! You need to use under 0x3C7C bytes!"
     exitFailure
+
+  -- If we are using barebone entries or similar, we have to figure out unlock data for the entries
+  pairsWithUnlockData <- 
+    if (theEntryType == BareBone)
+      then do
+        let pairsWithUnlistedIds = map (\(diffIds,entryList) -> (head diffIds,entryList)) cfgPairs
+        fmap (map $ \(diffId,entryList) -> ([diffId],entryList)) $ computeUnlockData pairsWithUnlistedIds
+      else return cfgPairs
+  let allEntries = map snd pairsWithUnlockData
 
   -- Write stuff now
   inFile <- openFile inFileName ReadMode
@@ -47,22 +56,23 @@ main = do
   -- Copy up to jump distance code
   hPutStrLn stderr "Copying bytes up to jump distance code..."
   cpBytes [1..startOfJumpDistanceCode]
-  -- Write jump distance code
-  case jumpDistanceSlotsMaybe of
-    Nothing -> do
-      hPutStrLn stderr "No jump distance slots specified. Defaulting to == 0"
-      writeJumpDistanceCode inFile outFile (Equal,0)
-      -- cpBytes [1..8]
-    Just jumpDistanceSlots -> do
-      hPutStrLn stderr "Writing jump distance code..."
-      writeJumpDistanceCode inFile outFile jumpDistanceSlots
+  -- Write jump distance code or not if we are using vanilla entries
+  if (theEntryType == Vanilla)  
+    then case jumpDistanceSlotsMaybe of
+      Nothing -> do
+        hPutStrLn stderr "No jump distance slots specified."
+        cpBytes [1..8]
+      Just jumpDistanceSlots -> do
+        hPutStrLn stderr "Writing jump distance code..."
+        writeJumpDistanceCode inFile outFile jumpDistanceSlots
+    else cpBytes [1..8]
   -- Copy up to challenge mode entries
   hPutStrLn stderr "Copying up to challenge mode entry area..."
   cpBytes [startOfJumpDistanceCode+8..startOfCMArea-1]
   -- Write challenge mode entries
   hPutStrLn stderr "Writing challenge mode entries..."
-  writeAllEntries outFile allEntries
-  -- Random junk
+  writeAllEntries outFile theEntryType allEntries
+  -- Generate random junk
   hPutStrLn stderr "Writing dummy data to fill some space..."
   posAfterWritingDiffs <- hTell outFile
   mapM_ (hPutChar outFile) $ take (fromIntegral $ endOfCMArea - posAfterWritingDiffs) $ cycle "BAGEL"
@@ -75,8 +85,8 @@ main = do
   writeOffsetTable inFile outFile offs
   -- Copy the rest
   hPutStrLn stderr "Copying the rest of file..."
-  hSeek inFile AbsoluteSeek afterOffsetTable
-  cpBytes [afterOffsetTable..sizeOfRel-1]
+  hSeek inFile AbsoluteSeek afterRelevantOffsets
+  cpBytes [afterRelevantOffsets..sizeOfRel-1]
   hFlush outFile
   putStrLn "Finished!"
   hClose inFile

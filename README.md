@@ -46,6 +46,8 @@ stupidConfig.new.txt shows more of what my config format can do. It shows you th
 
 testJumpDistanceSlots.new.txt shows you that you could specify a range of level slots that let you use goals that have arbitrary warp distance; that is, these slots allow you to make a red goal that allows you to warp from Level 18 to Level 25. Note that in these slots, you must specify every goal in the level.
 
+bareBonesSimpleConfig.new.txt writes the standard SMB2 difficulties, but with barebone entries. Check out my smb2-relmod repo for more details on those
+
 ## Notes
 
 There is a limited amount of space that could be used for the challenge mode entry area. The size of that area is 0x3E3C bytes; a normal entry, with no time alloted portion, is 0x54 bytes while each time alloted portion is 0x1C bytes. Also, the end of entries portion for a difficulty is 0x1C bytes. Therefore, the formula for calculating the size needed is 0x54\*(number of levels) + 0x1C\*(number of levels with time alloted portions) + 0x1C\*(number of entry lists that have a difficulty declaration associated with them). My half time config uses 0x3E20 space while my simple config uses 0x2F08 space.

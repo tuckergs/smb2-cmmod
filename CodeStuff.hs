@@ -20,6 +20,7 @@ import System.IO
 import Helpers
 import HexStuff
 import ParseMonad
+import Types
 
 
 startOfJumpDistanceCode :: Integer
@@ -30,25 +31,6 @@ modCmp :: Word32 -> Word16 -> Word32
 modCmp inst imm = (inst .&. 0xFFFF0000) .|. (fromIntegral $ imm)
 
 
-data Op = LessThan | GreaterThan | LessThanEqual | GreaterThanEqual | Equal | NotEqual | AL
-
-opToBits :: Op -> Word32
-opToBits GreaterThanEqual = 0x00800000
-opToBits LessThanEqual = 0x00810000
-opToBits NotEqual  = 0x00820000
-opToBits LessThan  = 0x01800000
-opToBits GreaterThan  = 0x01810000
-opToBits Equal  = 0x01820000
-opToBits AL  = 0x02800000
-
-opposite :: Op -> Op
-opposite GreaterThanEqual = LessThan
-opposite LessThanEqual = GreaterThan
-opposite NotEqual = Equal
-opposite LessThan = GreaterThanEqual
-opposite GreaterThan = LessThanEqual
-opposite Equal = NotEqual
-opposite AL = error "There is no implementation for branching never. There is no opposite of AL"
 
 
 modBc :: Word32 -> Op -> Word32

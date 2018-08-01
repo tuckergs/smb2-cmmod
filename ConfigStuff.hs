@@ -23,19 +23,20 @@ import ParseMonad
 
 import CodeStuff
 import EntryStuff
+import Types
 
 ------ READ CONFIG SCHTUFF ------
 
 diffNameToInt :: String -> Maybe Int
-diffNameToInt "Beginner" = Just 1
-diffNameToInt "Advanced" = Just 2
-diffNameToInt "Expert" = Just 3
-diffNameToInt "BeginnerExtra" = Just 4
-diffNameToInt "AdvancedExtra" = Just 5
-diffNameToInt "ExpertExtra" = Just 6
-diffNameToInt "Master" = Just 7
-diffNameToInt "MasterExtra" = Just 8
-diffNameToInt "Unused" = Just 9
+diffNameToInt "Beginner" = Just 0
+diffNameToInt "Advanced" = Just 1
+diffNameToInt "Expert" = Just 2
+diffNameToInt "BeginnerExtra" = Just 3
+diffNameToInt "AdvancedExtra" = Just 4
+diffNameToInt "ExpertExtra" = Just 5
+diffNameToInt "Master" = Just 6
+diffNameToInt "MasterExtra" = Just 7
+-- diffNameToInt "Unused" = Just 9
 diffNameToInt _ = Nothing
 
 comment = ws <|> (ws >> token '%' >> list item)
@@ -62,13 +63,14 @@ parseEntryListLine = (comment >> return Nothing) <|> entryLine <|> endOfEntryLin
       stgID <- parseNum
       timeAlotted <- parseNoTime <|> parseYesTime  
       goalList <- parseNoGoalData <|> parseYesGoalData
-      return $ Just $ Entry { getStgID = stgID , getTimeAlotted = timeAlotted , getGoalList = goalList , isLastStage = False } -- isLastStage will be set in fixEntries
+      comment
+      return $ Just $ Entry { getStgID = stgID , getTimeAlotted = timeAlotted , getUnlockData = Unresolved , getGoalList = goalList , isLastStage = False } -- isLastStage will be set in fixEntries
     parseNoTime = return Nothing
     parseYesTime = do
       ws1
       time <- parseNum
       return $ Just time
-    parseNoGoalData = comment >> return []
+    parseNoGoalData = return []
     parseYesGoalData = do
       ws1
       token '|'
@@ -99,18 +101,17 @@ parseEntryListLine = (comment >> return Nothing) <|> entryLine <|> endOfEntryLin
           guard (i /= j)
           return "erg"
       when hasDuplicates $ empty
-      comment
       return goalEntries
 
         
         
 
-data NormalLine = DiffLine (Int,String) | BeginEntryListLine String | JumpDistanceSlotsLine (Op,Word16)
+data NormalLine = DiffLine (Int,String) | BeginEntryListLine String | JumpDistanceSlotsLine (Op,Word16) | EntryTypeLine EntryType | Comment
 
 
 
-parseNormalLine :: Parse String (Maybe NormalLine)
-parseNormalLine = (comment >> return Nothing) <|> beginEntryListLine <|> diffLine <|> jumpDistanceSlotsLine
+parseNormalLine :: Parse String NormalLine
+parseNormalLine = (comment >> return Comment) <|> beginEntryListLine <|> diffLine <|> jumpDistanceSlotsLine <|> entryTypeLine
   where 
     beginEntryListLine = do
       ws
@@ -118,7 +119,7 @@ parseNormalLine = (comment >> return Nothing) <|> beginEntryListLine <|> diffLin
       ws1
       name <- parseName
       comment
-      return $ Just $ BeginEntryListLine name
+      return $ BeginEntryListLine name
     diffLine = do
       ws
       tokens "#diff"
@@ -130,7 +131,7 @@ parseNormalLine = (comment >> return Nothing) <|> beginEntryListLine <|> diffLin
           ws1
           listEntryName <- parseName
           comment
-          return $ Just $ DiffLine (slotID,listEntryName)
+          return $ DiffLine (slotID,listEntryName)
     jumpDistanceSlotsLine = do
       ws
       tokens "#jumpDistanceSlots"
@@ -145,7 +146,26 @@ parseNormalLine = (comment >> return Nothing) <|> beginEntryListLine <|> diffLin
       ws
       num <- parseNum
       comment
-      return $ Just $ JumpDistanceSlotsLine (op,num)
+      return $ JumpDistanceSlotsLine (op,num)
+    entryTypeLine = do
+      ws
+      tokens "#entryType"
+      ws1
+      entryTypeStr <- parseName
+      comment
+      case entryTypeStr of
+        "Vanilla" -> return $ EntryTypeLine Vanilla
+        "vanilla" -> return $ EntryTypeLine Vanilla
+        "BareBone" -> return $ EntryTypeLine BareBone
+        "Barebone" -> return $ EntryTypeLine BareBone
+        "bareBone" -> return $ EntryTypeLine BareBone
+        "barebone" -> return $ EntryTypeLine BareBone
+        "BareBones" -> return $ EntryTypeLine BareBone
+        "Barebones" -> return $ EntryTypeLine BareBone
+        "bareBones" -> return $ EntryTypeLine BareBone
+        "barebones" -> return $ EntryTypeLine BareBone
+        _ -> empty
+
 
 
 
@@ -153,7 +173,7 @@ parseNormalLine = (comment >> return Nothing) <|> beginEntryListLine <|> diffLin
   
 
 -- This returns a list of pairs of a entry list with the list of associated difficulty slots, and a jump distance slot
-readConfig :: String -> IO ([([Int],EntryList)], Maybe (Op,Word16))
+readConfig :: String -> IO ([([Int],EntryList)], Options)
 readConfig cfgFileName = do
   cfgFile <- openFile cfgFileName ReadMode
   allLns <- fmap lines $ hGetContents cfgFile
@@ -167,11 +187,12 @@ data ConfigLoopRecord = CLR { getLineNum :: Int ,
                               getDiffMap :: [(Int,String)] ,
                               getTmpEntryList :: EntryList ,
                               getEntryListNameMaybe :: Maybe String ,
+                              getEntryType :: EntryType ,
                               getJumpDistanceSlotsMaybe :: Maybe (Op,Word16)
                             }
 
 -- 
-parseConfig :: [String] -> IO ([([Int],EntryList)], Maybe (Op,Word16))
+parseConfig :: [String] -> IO ([([Int],EntryList)], Options)
 parseConfig allLns =
   let 
     initRecord = CLR { getLineNum = 1 ,
@@ -180,18 +201,22 @@ parseConfig allLns =
                           getDiffMap = [] ,
                           getTmpEntryList = [] ,
                           getEntryListNameMaybe = Nothing ,
+                          getEntryType = Vanilla ,
                           getJumpDistanceSlotsMaybe = Nothing
                         }
   in 
     flip fix initRecord $ 
       \loop curRecord -> do
-        let err = die $ "Error on line " ++ (show curLineNum)
+        let err = die generalErrMsg 
+            derr msg = die $ generalErrMsg ++ ": " ++ msg
+            generalErrMsg = "Error on line " ++ (show curLineNum)
             curLineNum = getLineNum curRecord
             curLns = getLines curRecord
             curEntryLists = getEntryLists curRecord
             curDiffMap = getDiffMap curRecord
             tmpEntryList = getTmpEntryList curRecord
             curEntryListNameMaybe = getEntryListNameMaybe curRecord
+            theEntryType = getEntryType curRecord
             curJumpDistanceSlotsMaybe = getJumpDistanceSlotsMaybe curRecord
         case curLns of
           [] -> do
@@ -205,6 +230,14 @@ parseConfig allLns =
             -- Check if two entry lists have same ID
             when (length fixedEntryLists /= (length $ noDups $ map fst fixedEntryLists)) $ do
               die "Two entry lists have same ID"
+            -- Barebone and similar specific checks
+            when (theEntryType == BareBone) $ do 
+              -- For certain entry types, we can't have two difficulties with the same entry list id
+              when (length curDiffMap /= (length $ noDups $ map snd curDiffMap)) $
+                die "When using barebone entries or similar, two difficulties can\'t point to the same entry list"
+              -- Every difficulty must be defined
+              when (length curDiffMap /= 8) $ 
+                die "When using barebone entries or similar, you must specify all eight difficulties"
             -- Compute pairs 
             let listEntryStrs = noDups $ map snd curDiffMap
                 -- compactDiffMap combines pairs with like entry list ids
@@ -215,7 +248,7 @@ parseConfig allLns =
                   guard $ listID1 == listID2
                   return (reverse slotIDs,el)
             -- Return pairs
-            return $ (pairs,curJumpDistanceSlotsMaybe)
+            return $ (pairs,Opts theEntryType curJumpDistanceSlotsMaybe)
 
           (ln:lns) -> do
             let contRecord = curRecord { getLineNum = curLineNum + 1 , getLines = lns }
@@ -224,15 +257,22 @@ parseConfig allLns =
               Nothing -> do -- We are not reading an entry list
                 case parse parseNormalLine ln of
                   Left _ -> err -- Bad parse
-                  Right Nothing -> cont -- A comment
-                  Right (Just (BeginEntryListLine name)) -> -- We saw #beginEntryList
+                  Right Comment -> cont -- A comment
+                  Right (BeginEntryListLine name) -> -- We saw #beginEntryList
                     loop $ contRecord { getTmpEntryList = [] , 
                                         getEntryListNameMaybe = Just name 
                                       } -- Clear tmp list, update entry list name
-                  Right (Just (DiffLine diff)) -> -- We saw #diff
+                  Right (DiffLine diff) -> -- We saw #diff
                     loop $ contRecord { getDiffMap = diff:curDiffMap } -- Add diff declaration
-                  Right (Just (JumpDistanceSlotsLine jd)) -> -- We saw #jumpDistanceSlotsLine
+                  Right (JumpDistanceSlotsLine jd) -> do -- We saw #jumpDistanceSlotsLine
+                    when (theEntryType /= Vanilla) $ 
+                      derr $ "You can only specify jump distance slots for vanilla entries"
                     loop $ contRecord { getJumpDistanceSlotsMaybe = Just jd } -- Add jump distance slots declaration
+                  Right (EntryTypeLine entryType) -> do
+                    let errMsg = "If you have an entry type line, it must be the first non-whitespace line in the program"
+                    when (not $ null curDiffMap && null curEntryLists && null tmpEntryList) $
+                      derr errMsg
+                    loop $ contRecord { getEntryType = entryType }
               Just curEntryListName -> do -- We are in entry list
                 case parse parseEntryListLine ln of
                   Left _ -> err -- Bad parse
@@ -249,7 +289,12 @@ parseConfig allLns =
                                         getTmpEntryList = [] ,
                                         getEntryListNameMaybe = Nothing
                                       } -- Add entry list, reset tmp list and name
-                  Right (Just entry) ->  -- We saw an entry
+                  Right (Just entry) -> do -- We saw an entry
+                    -- If we are using barebone entries, make sure that jump distances must be normal
+                    when (theEntryType == BareBone) $ 
+                      forM_ (getGoalList entry) $ \(goalType,jd) ->
+                        when (jd /= (goalTypeToID goalType + 1)) $
+                          derr $ "When using barebone entries, you can\'t specify special jump distances for the goals"
                     loop $ contRecord { getTmpEntryList = entry:tmpEntryList } -- Add entry to tmp list
 
 

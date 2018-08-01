@@ -10,7 +10,7 @@
 293
 #endEntryList
 
-#diff Unused dummy
+#diff Advanced dummy
 
 #beginEntryList be
 261 1800 | blue=1               % Wormhole

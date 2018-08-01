@@ -9,3 +9,12 @@ noDups ls
                c == ls !! j 
                ])
     ]
+
+brutalLookup :: Eq a => a -> [(a,b)] -> b
+brutalLookup ele store = case lookup ele store of
+  Just b -> b
+  Nothing -> error "brutalLookup failed. You shouldn\'t be seeing this. TwixNinja sucks. You should beat him up."
+
+brutalUncons :: [a] -> (a,[a])
+brutalUncons [] = error "brutalUncons failed. You shouldn\'t be seeing this. TwixNinja sucks. You should beat him up." 
+brutalUncons (x:xs) = (x,xs)
