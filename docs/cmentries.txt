@@ -1,0 +1,38 @@
+
+------ Challenge mode entries ------
+
+What: 
+-These are a part of the REL that determine what levels are in the difficulties
+-These specify a stage id and other things like time allotted and more
+
+Vanilla entries:
+-These are the entries that vanilla SMB2 uses
+-These specify stage id, time allotted, and series of "if-then" statements related to the amount of stages a stage warps you
+--You can specify that if we went into a certain goal and/or if we got to it before a certain time, then we warp a particular distance
+--cmmod doesn't support timed warps. It might in the future
+
+Notes about vanilla:
+-The game will only read the warp distance of the entry if the stage id is a "jump distance slot"
+-Otherwise, it will use normal jump distance (1 for blue, 2 for green, 3 for red)
+-In slots that are not jump distance slots, blue/green/red always warp a normal amount
+--This means that the jump distance part of the entry isn't needed if you want normal jump distance
+-For jump distance slots, you need that jump distance data, or else you will always warp one stage ahead
+--This data takes a lot of space
+-You may set jump distance slots with cmmod by writing #jumpDistanceSlots (comparison operator)(val)
+--See cfgs/testJumpDistanceSlots.asm
+
+Barebone entries:
+-These are modded entries that are MUCH shorter
+-These specify stage id, time allotted, and special data about how to detect/set the unlockedness of a level
+-Normal jump distance is assumed (1 for blue, etc.)
+-See my relmod repo for more details on these and about how to mod the REL to accept these entries
+
+Notes about barebones:
+-Barebone entries have a significantly different way of storing unlockedness than vanilla SMB2 does
+--Vanilla entries don't store any info about it. It just hardcodes that info into functions
+--At some point, we might make an option so that barebone entries will store the data in the same way SMB2 does, with the restriction that you can't have more levels in a level set than normal. This will be useful if you want to make a time allotted hack of SMB2
+-Although these entries use normal warp distance, you need to specify all the types of goals that you put into a level
+--This is so that cmmod could correctly deduce the unlock data for your levels
+
+
+
