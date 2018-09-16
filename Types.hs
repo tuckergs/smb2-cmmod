@@ -11,7 +11,7 @@ data Options = Opts { optGetEntryType :: EntryType , optGetJumpDistanceSlots :: 
 data GoalType = BlueG | GreenG | RedG
   deriving (Show, Eq, Ord)
 
-goalTypeToID :: GoalType -> Word32
+goalTypeToID :: Num a => GoalType -> a
 goalTypeToID BlueG = 0
 goalTypeToID GreenG = 1
 goalTypeToID RedG = 2

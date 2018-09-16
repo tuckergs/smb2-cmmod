@@ -6,6 +6,7 @@ module EntryStuff where
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Fix
+import Data.Bits
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Builder as BB
@@ -99,8 +100,9 @@ writeEntry handle Vanilla (Entry stgID timeAlotted _ goalList isEnd) = BB.hPutBu
                 mconcat $ map singleGoalBuilder goalList
 writeEntry handle BareBone EndOfEntries = BB.hPutBuilder handle $
   BB.word32BE 0x03000000 <> BB.word32BE 0x0
-writeEntry handle BareBone (Entry stgID timeAllotted unlockData _ _) = BB.hPutBuilder handle $
-  BB.word16BE 0x0200
+writeEntry handle BareBone (Entry stgID timeAllotted unlockData goalList _) = BB.hPutBuilder handle $
+  BB.word8 0x02
+  <> (BB.word8 $ computeGoalBitField goalList)
   <> BB.word16BE stgID
   <> timePart
   <> unlockPart
@@ -116,7 +118,12 @@ writeAllEntries :: Handle -> EntryType -> [EntryList] -> IO ()
 writeAllEntries handle entryType diffs = (mapM_ (writeEntry handle entryType) $ concat diffs) >> hFlush handle
 
 
------- POINTER SCHTUFF ------
+------ COMPUTATIONZ! ------
+
+-- Finds what goals exist for the goal list
+computeGoalBitField :: [GoalEntry] -> Word8
+computeGoalBitField = foldl (\pr -> (.|. pr) . shiftL 1 . goalTypeToID) 1 . map fst
+
 
 -- Calculates the unlock data for the entries
 computeUnlockData :: [(Int,EntryList)] -> IO [(Int,EntryList)]
@@ -183,6 +190,8 @@ computeUnlockData diffs = do
           let (fixedDiff,nextCounterBitPair) = addUnlockDataToEntryList curCounterBitPair diff
           in (fixedDiff:) $ loop (rest,nextCounterBitPair) 
   return $ addUnlockDataToAllEntryLists
+
+------ POINTER SCHTUFF ------
 
 -- The size of an challenge mode entry
 entrySize :: EntryType -> Entry -> Word16
