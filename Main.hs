@@ -29,7 +29,7 @@ main = do
   let (inFileName:configFileName:outFileName:_) = args
 
   -- Read config and set up things
-  (cfgPairs,Opts theEntryType jumpDistanceSlotsMaybe) <- readConfig configFileName
+  (cfgPairs,Opts theEntryType theUnlockScheme jumpDistanceSlotsMaybe) <- readConfig configFileName
   let (offs,sz) = computeOffsets theEntryType cfgPairs
   hPutStrLn stderr $ "Bytes needed to output entries: 0x" ++ (show $ Hex sz)
   when (sz > maxSize) $ do
@@ -41,7 +41,7 @@ main = do
     if (theEntryType == BareBone)
       then do
         let pairsWithUnlistedIds = map (\(diffIds,entryList) -> (head diffIds,entryList)) cfgPairs
-        fmap (map $ \(diffId,entryList) -> ([diffId],entryList)) $ computeUnlockData pairsWithUnlistedIds
+        fmap (map $ \(diffId,entryList) -> ([diffId],entryList)) $ computeUnlockData theUnlockScheme pairsWithUnlistedIds
       else return cfgPairs
   let allEntries = map snd pairsWithUnlockData
 

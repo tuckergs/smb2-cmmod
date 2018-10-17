@@ -126,8 +126,8 @@ computeGoalBitField = foldl (\pr -> (.|. pr) . shiftL 1 . goalTypeToID) 1 . map 
 
 
 -- Calculates the unlock data for the entries
-computeUnlockData :: [(Int,EntryList)] -> IO [(Int,EntryList)]
-computeUnlockData diffs = do
+computeUnlockData :: UnlockScheme -> [(Int,EntryList)] -> IO [(Int,EntryList)]
+computeUnlockData Optimized diffs = do
   let
     beDiffSet = [0,3]
     adDiffSet = [1,4]
@@ -190,6 +190,33 @@ computeUnlockData diffs = do
           let (fixedDiff,nextCounterBitPair) = addUnlockDataToEntryList curCounterBitPair diff
           in (fixedDiff:) $ loop (rest,nextCounterBitPair) 
   return $ addUnlockDataToAllEntryLists
+
+computeUnlockData Stable diffs = do
+  let
+    pairSorter (d1,_) (d2,_) = compare d1 d2
+    sortedDiffs = sortBy pairSorter diffs
+    vanillaNumLevels = [10,30,50,10,10,10,10,10]
+    vanillaFirstBits = [0,10,40,90,100,110,120,130]
+    diffNames = [
+      "Beginner","Advanced","Expert",
+      "Beginner Extra","Advanced Extra","Expert Extra",
+      "Master","Master Extra" ]
+    updateListStep (curDiffs,curExtraBitsUsed) (diff@(_,entryList),numLevels,firstBit) =
+      let
+        entriesBeforeCutoff = take numLevels entryList
+        entriesAfterCutoff = drop numLevels entryList
+        numLevelsAfterCutoff = fromIntegral $ max 0 $ length entriesAfterCutoff - 1
+        updater = zipWith $ \entry b -> case entry of
+          EndOfEntries -> EndOfEntries
+          _ -> entry { getUnlockData = BitField b }
+        updatedBeforeCutoff = updater entriesBeforeCutoff [firstBit..]
+        updatedAfterCutoff = updater entriesAfterCutoff [(140+curExtraBitsUsed)..]
+        updatedDiff = flip (<$) diff $ updatedBeforeCutoff ++ updatedAfterCutoff
+      in (curDiffs ++ [updatedDiff],curExtraBitsUsed + numLevelsAfterCutoff)
+    (updatedDiffs,numExtraBitsUsed) = foldl updateListStep ([],0) $ zipWith3 (,,) sortedDiffs vanillaNumLevels vanillaFirstBits
+  when (numExtraBitsUsed > 20) $
+    die $ "When using barebone entries or similar with stable unlockedness, you can\'t have more than 20 levels beyond the vanilla difficulty bounds (like Beginner 11).\nUse optimized unlockedness for more than 160 levels; read docs/cmentries.txt before you use them" 
+  return updatedDiffs  
 
 ------ POINTER SCHTUFF ------
 

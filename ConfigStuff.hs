@@ -9,9 +9,9 @@ import Control.Monad.Fix
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Builder as BB
-import Data.Monoid
 import Data.Char
 import Data.List
+import Data.Monoid
 import Data.Word
 import System.Environment
 import System.Exit
@@ -106,12 +106,12 @@ parseEntryListLine = (comment >> return Nothing) <|> entryLine <|> endOfEntryLin
         
         
 
-data NormalLine = DiffLine (Int,String) | BeginEntryListLine String | JumpDistanceSlotsLine (Op,Word16) | EntryTypeLine EntryType | Comment
+data NormalLine = DiffLine (Int,String) | BeginEntryListLine String | JumpDistanceSlotsLine (Op,Word16) | EntryTypeLine EntryType | UnlockSchemeLine UnlockScheme | Comment
 
 
 
 parseNormalLine :: Parse String NormalLine
-parseNormalLine = (comment >> return Comment) <|> beginEntryListLine <|> diffLine <|> jumpDistanceSlotsLine <|> entryTypeLine
+parseNormalLine = (comment >> return Comment) <|> beginEntryListLine <|> diffLine <|> jumpDistanceSlotsLine <|> entryTypeLine <|> unlockSchemeLine
   where 
     beginEntryListLine = do
       ws
@@ -165,6 +165,16 @@ parseNormalLine = (comment >> return Comment) <|> beginEntryListLine <|> diffLin
         "bareBones" -> return $ EntryTypeLine BareBone
         "barebones" -> return $ EntryTypeLine BareBone
         _ -> empty
+    unlockSchemeLine = do
+      ws
+      tokens "#unlockDataScheme"
+      ws1
+      unlockSchemeStr <- parseName
+      comment
+      case map toLower unlockSchemeStr of
+        "stable" -> return $ UnlockSchemeLine Stable
+        "optimized" -> return $ UnlockSchemeLine Optimized
+        _ -> empty
 
 
 
@@ -188,6 +198,7 @@ data ConfigLoopRecord = CLR { getLineNum :: Int ,
                               getTmpEntryList :: EntryList ,
                               getEntryListNameMaybe :: Maybe String ,
                               getEntryType :: EntryType ,
+                              getUnlockScheme :: UnlockScheme ,
                               getJumpDistanceSlotsMaybe :: Maybe (Op,Word16)
                             }
 
@@ -202,6 +213,7 @@ parseConfig allLns =
                           getTmpEntryList = [] ,
                           getEntryListNameMaybe = Nothing ,
                           getEntryType = Vanilla ,
+                          getUnlockScheme = Optimized ,
                           getJumpDistanceSlotsMaybe = Nothing
                         }
   in 
@@ -217,6 +229,7 @@ parseConfig allLns =
             tmpEntryList = getTmpEntryList curRecord
             curEntryListNameMaybe = getEntryListNameMaybe curRecord
             theEntryType = getEntryType curRecord
+            theUnlockScheme = getUnlockScheme curRecord
             curJumpDistanceSlotsMaybe = getJumpDistanceSlotsMaybe curRecord
         case curLns of
           [] -> do
@@ -231,6 +244,8 @@ parseConfig allLns =
             when (length fixedEntryLists /= (length $ noDups $ map fst fixedEntryLists)) $ do
               die "Two entry lists have same ID"
             -- Barebone and similar specific checks
+            when (theEntryType == Vanilla && theUnlockScheme == Optimized) $
+              die "Vanilla entries can\'t use optimized unlockedness"
             when (theEntryType == BareBone) $ do 
               -- For certain entry types, we can't have two difficulties with the same entry list id
               when (length curDiffMap /= (length $ noDups $ map snd curDiffMap)) $
@@ -238,6 +253,9 @@ parseConfig allLns =
               -- Every difficulty must be defined
               when (length curDiffMap /= 8) $ 
                 die "When using barebone entries or similar, you must specify all eight difficulties"
+              -- let numEntries = sum $ flip map fixedEntryLists $ sum . map (\case { EndOfEntries -> 0 ; _ -> 1 }) . snd
+              -- when (numEntries > 160 && theUnlockScheme == Stable) $ do
+                -- die "When using barebone entries or similar with stable unlockedness, you can\'t have more than 160 levels across the difficulties.\nUse optimized unlockedness for more than 160 levels; read docs/cmentries.txt before you use them" 
             -- Compute pairs 
             let listEntryStrs = noDups $ map snd curDiffMap
                 -- compactDiffMap combines pairs with like entry list ids
@@ -248,7 +266,7 @@ parseConfig allLns =
                   guard $ listID1 == listID2
                   return (reverse slotIDs,el)
             -- Return pairs
-            return $ (pairs,Opts theEntryType curJumpDistanceSlotsMaybe)
+            return $ (pairs,Opts theEntryType theUnlockScheme curJumpDistanceSlotsMaybe)
 
           (ln:lns) -> do
             let contRecord = curRecord { getLineNum = curLineNum + 1 , getLines = lns }
@@ -273,6 +291,11 @@ parseConfig allLns =
                     when (not $ null curDiffMap && null curEntryLists && null tmpEntryList) $
                       derr errMsg
                     loop $ contRecord { getEntryType = entryType }
+                  Right (UnlockSchemeLine unlockScheme) -> do
+                    let errMsg = "If you have an unlock data scheme line, it must be the first non-whitespace line in the program"
+                    when (not $ null curDiffMap && null curEntryLists && null tmpEntryList) $
+                      derr errMsg
+                    loop $ contRecord { getUnlockScheme = unlockScheme }
               Just curEntryListName -> do -- We are in entry list
                 case parse parseEntryListLine ln of
                   Left _ -> err -- Bad parse

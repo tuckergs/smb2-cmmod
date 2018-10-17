@@ -46,6 +46,10 @@ testJumpDistanceSlots.new.txt shows you that you could specify a range of level 
 
 bareBonesSimpleConfig.new.txt writes the standard SMB2 difficulties, but with barebone entries. Check out my smb2-relmod repo for more details on those, and read docs/cmentries.txt before using these
 
+sampleStableBareBoneConfig.new.txt is a sample config that shows you that you can extend the difficulties without requiring a different save file with stable barebone entries, as opposed to normal, optimized barebone entries, which requires a different save file. Note that you could only extend the difficulties by 20 levels. As above, read docs/cmentries.txt in my smb2-relmod repo before using
+
+halfTimeConfig.new.txt halves the times for all of the levels. This config makes cmmod output stable barebone entries, so you should read docs/cmentries.txt in my smb2-relmod repo before using
+
 ## Notes
 
 There is a limited amount of space that could be used for the challenge mode entry area. The size of that area is 0x3C7C bytes; a normal entry, with no time alloted portion, is 0x54 bytes while each time alloted portion is 0x1C bytes. Also, the end of entries portion for a difficulty is 0x1C bytes. Therefore, the formula for calculating the size needed is 0x54\*(number of levels) + 0x1C\*(number of levels with time alloted portions) + 0x1C\*(number of entry lists that have a difficulty declaration associated with them). Barebone entries are always 8 bytes long, and end of entries portions for barebone entries is also 8 bytes. My simple config uses 0x2F08 space.
