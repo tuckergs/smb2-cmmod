@@ -244,8 +244,6 @@ parseConfig allLns =
             when (length fixedEntryLists /= (length $ noDups $ map fst fixedEntryLists)) $ do
               die "Two entry lists have same ID"
             -- Barebone and similar specific checks
-            when (theEntryType == Vanilla && theUnlockScheme == Optimized) $
-              die "Vanilla entries can\'t use optimized unlockedness"
             when (theEntryType == BareBone) $ do 
               -- For certain entry types, we can't have two difficulties with the same entry list id
               when (length curDiffMap /= (length $ noDups $ map snd curDiffMap)) $
