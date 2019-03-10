@@ -69,7 +69,9 @@ parseEntryListLine = (comment >> return Nothing) <|> entryLine <|> endOfEntryLin
     parseYesTime = do
       ws1
       time <- parseNum
-      return $ Just time
+      if (time /= 3600)
+        then return $ Just time
+        else return Nothing
     parseNoGoalData = return []
     parseYesGoalData = do
       ws1
