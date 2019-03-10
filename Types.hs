@@ -6,7 +6,7 @@ import Data.Word
 data EntryType = Vanilla | BareBone
   deriving (Show, Eq)
 
-data Options = Opts { optGetEntryType :: EntryType , optGetUnlockScheme :: UnlockScheme , optGetJumpDistanceSlots :: Maybe (Op,Word16) } 
+data Options = Opts { optGetEntryType :: EntryType , optGetUnlockScheme :: UnlockScheme , optGetRELType :: RELType , optGetJumpDistanceSlots :: Maybe (Op,Word16) } 
 
 data GoalType = BlueG | GreenG | RedG
   deriving (Show, Eq, Ord)
@@ -23,6 +23,8 @@ data UnlockData = BitField Word8 | Counter Word8 Word8 | Unresolved
 
 data UnlockScheme = Stable | Optimized
   deriving Eq
+
+data RELType = NormalREL | UnrelocatedREL
 
 data Entry = EndOfEntries | Entry { getStgID :: Word16 , getTimeAlotted :: Maybe Word16 , getUnlockData :: UnlockData , getGoalList :: [GoalEntry] , isLastStage :: Bool }
   deriving Show

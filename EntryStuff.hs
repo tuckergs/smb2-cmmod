@@ -30,7 +30,7 @@ import Types
 magicNumber :: Word16
 magicNumber = 0x3550
 
--- The maximum size the challenge mode entries can be
+-- The maximum size the challenge mode entries can take up
 maxSize :: Word16
 maxSize = 0x3C7C
 
@@ -38,18 +38,25 @@ maxSize = 0x3C7C
 startOfCMArea :: Integer
 startOfCMArea = 0x2075B0
 
--- The end of the challenge mode entry space. This is where the RAM pointer table starts
+-- The end of the challenge mode entry space. This is where the Competition Mode entries start
 endOfCMArea :: Integer
 endOfCMArea = 0x20B22C
 
 -- The first offset of the offset table
-firstOffset :: Integer
-firstOffset = 0x2C787A
+firstOffsetNormal :: Integer
+firstOffsetNormal = 0x2C787A
+
+firstOffsetUnrelocated :: Integer
+firstOffsetUnrelocated = 0x20b3ec
 
 -- Where we leave off after writing the offset table
-afterRelevantOffsets :: Integer
-afterRelevantOffsets = 0x2C78C2
+afterRelevantOffsetsNormal :: Integer
+afterRelevantOffsetsNormal = 0x2C78C2
 
+afterRelevantOffsetsUnrelocated :: Integer
+afterRelevantOffsetsUnrelocated = 0x20b41c
+
+-- Size of REL
 sizeOfRel :: Integer
 sizeOfRel = 3000268
 
@@ -215,7 +222,7 @@ computeUnlockData Stable diffs = do
       in (curDiffs ++ [updatedDiff],curExtraBitsUsed + numLevelsAfterCutoff)
     (updatedDiffs,numExtraBitsUsed) = foldl updateListStep ([],0) $ zipWith3 (,,) sortedDiffs vanillaNumLevels vanillaFirstBits
   when (numExtraBitsUsed > 20) $
-    die $ "When using barebone entries or similar with stable unlockedness, you can\'t have more than 20 levels beyond the vanilla difficulty bounds (like Beginner 11).\nUse optimized unlockedness for more than 160 levels; read docs/cmentries.txt before you use them" 
+    die $ "When using barebone entries or similar with stable unlockedness, you can\'t have more than 20 levels beyond the vanilla difficulty bounds (like Beginner 11).\nUse optimized unlockedness for more than 160 levels; read docs/cmentries.txt in smb2-relmod before you use them" 
   return updatedDiffs  
 
 ------ POINTER SCHTUFF ------
@@ -267,18 +274,27 @@ computeOffsets entryType pairs =
   
 
 -- inFile must be at the stuff after the offset
-writeOffset :: Handle -> Handle -> Word16 -> IO ()
-writeOffset inFile outFile off = do
+writeOffset :: RELType -> Handle -> Handle -> Word16 -> IO ()
+writeOffset NormalREL inFile outFile off = do
   BB.hPutBuilder outFile $ BB.word16BE (off+magicNumber)
   hFlush outFile
-  forM_ [1..6] $ const $ hGetChar inFile >>= hPutChar outFile
   hSeek inFile RelativeSeek 0x2
+  forM_ [1..6] $ const $ hGetChar inFile >>= hPutChar outFile
+  hFlush outFile
+
+writeOffset UnrelocatedREL inFile outFile off = do
+  BB.hPutBuilder outFile $ BB.word32BE $ fromIntegral off + 0x804776b0
+  hFlush outFile
+  hSeek inFile RelativeSeek 0x4
   hFlush outFile
 
 -- Note this makes the empty difficulty point to Master Extra
-writeOffsetTable :: Handle -> Handle -> [Word16] -> IO ()
-writeOffsetTable inFile outFile (off1:off2:off3:off4:off5:off6:off7:off8:_) = do
-  hSeek inFile RelativeSeek 0x2
-  mapM_ (writeOffset inFile outFile) $ (off1:off2:off3:off4:off5:off6:off7:off8:off8:[]) 
-  
-
+writeOffsetTable :: RELType -> Handle -> Handle -> [Word16] -> IO ()
+writeOffsetTable ty inFile outFile (off1:off2:off3:off4:off5:off6:off7:off8:_) = do
+  mapM_ (writeOffset ty inFile outFile) $ (off1:off2:off3:off4:off5:off6:off7:off8:off8:[]) 
+  case ty of
+    UnrelocatedREL -> replicateM_ 3 $ do
+      BB.hPutBuilder outFile $ BB.word32BE 0x8047b32c
+      hFlush outFile
+      hSeek inFile RelativeSeek 0x4
+    _ -> return ()

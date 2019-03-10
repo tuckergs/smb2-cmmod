@@ -29,7 +29,7 @@ main = do
   let (inFileName:configFileName:outFileName:_) = args
 
   -- Read config and set up things
-  (cfgPairs,Opts theEntryType theUnlockScheme jumpDistanceSlotsMaybe) <- readConfig configFileName
+  (cfgPairs,Opts theEntryType theUnlockScheme theRELType jumpDistanceSlotsMaybe) <- readConfig configFileName
   let (offs,sz) = computeOffsets theEntryType cfgPairs
   hPutStrLn stderr $ "Bytes needed to output entries: 0x" ++ (show $ Hex sz)
   when (sz > maxSize) $ do
@@ -76,16 +76,20 @@ main = do
   hPutStrLn stderr "Writing dummy data to fill some space..."
   posAfterWritingDiffs <- hTell outFile
   mapM_ (hPutChar outFile) $ take (fromIntegral $ endOfCMArea - posAfterWritingDiffs) $ cycle "BAGEL"
+  -- Offset table stuff
+  let
+    (firstOffset,afterRelevantOffsets) = case theRELType of 
+      NormalREL -> (firstOffsetNormal,afterRelevantOffsetsNormal)
+      UnrelocatedREL -> (firstOffsetUnrelocated,afterRelevantOffsetsUnrelocated)
   -- Copy up to offset table
-  hPutStrLn stderr "Copying bytes up to first offset in offset table at 0x2C7874..."
+  hPutStrLn stderr "Writing offset table..."
   hSeek inFile AbsoluteSeek endOfCMArea
   cpBytes [endOfCMArea..firstOffset-1]
   -- Write offset table
   hPutStrLn stderr "Writing offset table..."
-  writeOffsetTable inFile outFile offs
+  writeOffsetTable theRELType inFile outFile offs
   -- Copy the rest
   hPutStrLn stderr "Copying the rest of file..."
-  hSeek inFile AbsoluteSeek afterRelevantOffsets
   cpBytes [afterRelevantOffsets..sizeOfRel-1]
   hFlush outFile
   putStrLn "Finished!"

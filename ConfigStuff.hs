@@ -13,6 +13,7 @@ import Data.Char
 import Data.List
 import Data.Monoid
 import Data.Word
+import Debug.Trace
 import System.Environment
 import System.Exit
 import System.IO
@@ -108,12 +109,12 @@ parseEntryListLine = (comment >> return Nothing) <|> entryLine <|> endOfEntryLin
         
         
 
-data NormalLine = DiffLine (Int,String) | BeginEntryListLine String | JumpDistanceSlotsLine (Op,Word16) | EntryTypeLine EntryType | UnlockSchemeLine UnlockScheme | Comment
+data NormalLine = DiffLine (Int,String) | BeginEntryListLine String | JumpDistanceSlotsLine (Op,Word16) | EntryTypeLine EntryType | UnlockSchemeLine UnlockScheme | RELTypeLine RELType | Comment
 
 
 
 parseNormalLine :: Parse String NormalLine
-parseNormalLine = (comment >> return Comment) <|> beginEntryListLine <|> diffLine <|> jumpDistanceSlotsLine <|> entryTypeLine <|> unlockSchemeLine
+parseNormalLine = (comment >> return Comment) <|> beginEntryListLine <|> diffLine <|> jumpDistanceSlotsLine <|> entryTypeLine <|> unlockSchemeLine <|> relTypeLine
   where 
     beginEntryListLine = do
       ws
@@ -177,6 +178,14 @@ parseNormalLine = (comment >> return Comment) <|> beginEntryListLine <|> diffLin
         "stable" -> return $ UnlockSchemeLine Stable
         "optimized" -> return $ UnlockSchemeLine Optimized
         _ -> empty
+    relTypeLine = do
+      ws
+      tokens "#relType"
+      ws1
+      fmap (map toLower) (parseName <* comment) >>= \case
+        "normal" -> return $ RELTypeLine NormalREL
+        "unrelocated" -> return $ RELTypeLine UnrelocatedREL
+        _ -> empty
 
 
 
@@ -201,6 +210,7 @@ data ConfigLoopRecord = CLR { getLineNum :: Int ,
                               getEntryListNameMaybe :: Maybe String ,
                               getEntryType :: EntryType ,
                               getUnlockScheme :: UnlockScheme ,
+                              getRELType :: RELType ,
                               getJumpDistanceSlotsMaybe :: Maybe (Op,Word16)
                             }
 
@@ -216,6 +226,7 @@ parseConfig allLns =
                           getEntryListNameMaybe = Nothing ,
                           getEntryType = Vanilla ,
                           getUnlockScheme = Optimized ,
+                          getRELType = NormalREL ,
                           getJumpDistanceSlotsMaybe = Nothing
                         }
   in 
@@ -232,6 +243,7 @@ parseConfig allLns =
             curEntryListNameMaybe = getEntryListNameMaybe curRecord
             theEntryType = getEntryType curRecord
             theUnlockScheme = getUnlockScheme curRecord
+            theRELType = getRELType curRecord
             curJumpDistanceSlotsMaybe = getJumpDistanceSlotsMaybe curRecord
         case curLns of
           [] -> do
@@ -266,7 +278,7 @@ parseConfig allLns =
                   guard $ listID1 == listID2
                   return (reverse slotIDs,el)
             -- Return pairs
-            return $ (pairs,Opts theEntryType theUnlockScheme curJumpDistanceSlotsMaybe)
+            return $ (pairs,Opts theEntryType theUnlockScheme theRELType curJumpDistanceSlotsMaybe)
 
           (ln:lns) -> do
             let contRecord = curRecord { getLineNum = curLineNum + 1 , getLines = lns }
@@ -287,15 +299,20 @@ parseConfig allLns =
                       derr $ "You can only specify jump distance slots for vanilla entries"
                     loop $ contRecord { getJumpDistanceSlotsMaybe = Just jd } -- Add jump distance slots declaration
                   Right (EntryTypeLine entryType) -> do
-                    let errMsg = "If you have an entry type line, it must be the first non-whitespace line in the program"
+                    let errMsg = "If you have an entry type line, it must be before the entry lists and the difficulty list"
                     when (not $ null curDiffMap && null curEntryLists && null tmpEntryList) $
                       derr errMsg
                     loop $ contRecord { getEntryType = entryType }
                   Right (UnlockSchemeLine unlockScheme) -> do
-                    let errMsg = "If you have an unlock data scheme line, it must be the first non-whitespace line in the program"
+                    let errMsg = "If you have an unlock data scheme line, it must be before the entry lists and the difficulty list"
                     when (not $ null curDiffMap && null curEntryLists && null tmpEntryList) $
                       derr errMsg
                     loop $ contRecord { getUnlockScheme = unlockScheme }
+                  Right (RELTypeLine relType) -> do
+                    let errMsg = "If you have an REL type line, it must be before the entry lists and the difficulty list"
+                    when (not $ null curDiffMap && null curEntryLists && null tmpEntryList) $
+                      derr errMsg
+                    loop $ contRecord { getRELType = relType }
               Just curEntryListName -> do -- We are in entry list
                 case parse parseEntryListLine ln of
                   Left _ -> err -- Bad parse
