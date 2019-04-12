@@ -54,8 +54,6 @@ halfTimeConfig.new.txt halves the times for all of the levels. This config makes
 
 There is a limited amount of space that could be used for the challenge mode entry area. The size of that area is 0x3C7C bytes; a normal entry, with no time alloted portion, is 0x54 bytes while each time alloted portion is 0x1C bytes. Also, the end of entries portion for a difficulty is 0x1C bytes. Therefore, the formula for calculating the size needed is 0x54\*(number of levels) + 0x1C\*(number of levels with time alloted portions) + 0x1C\*(number of entry lists that have a difficulty declaration associated with them). Barebone entries are always 8 bytes long, and end of entries portions for barebone entries is also 8 bytes. My simple config uses 0x2F08 space.
 
-Note that I took down the half time config because we found out that we had less space that we thought that we did, and the half time config used that used space. Barebone entries can handle a half time config; however, barebone entries expect a different representation for level unlockedness. I may or may not make an option for this program that makes barebone entries use the vanilla representation for level unlockedness
-
 Before specifying jump distance or using barebone entries, you should read docs/cmentries.txt
 
 ## Credits
