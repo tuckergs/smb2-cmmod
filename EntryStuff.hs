@@ -225,6 +225,13 @@ computeUnlockData Stable diffs = do
     die $ "When using barebone entries or similar with stable unlockedness, you can\'t have more than 20 levels beyond the vanilla difficulty bounds (like Beginner 11).\nUse optimized unlockedness for more than 160 levels; read docs/cmentries.txt in smb2-relmod before you use them" 
   return updatedDiffs  
 
+computeUnlockData None diffs = 
+  let 
+    updateUnlockedness EndOfEntries = EndOfEntries
+    updateUnlockedness entry = entry { getUnlockData = BitField 0 }
+  in return $ map (fmap (map updateUnlockedness)) diffs  
+  
+
 ------ POINTER SCHTUFF ------
 
 -- The size of an challenge mode entry

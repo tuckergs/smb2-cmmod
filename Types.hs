@@ -21,7 +21,7 @@ type GoalEntry = (GoalType,Word32)
 data UnlockData = BitField Word8 | Counter Word8 Word8 | Unresolved
   deriving Show
 
-data UnlockScheme = Stable | Optimized
+data UnlockScheme = Stable | Optimized | None
   deriving Eq
 
 data RELType = NormalREL | UnrelocatedREL

@@ -170,13 +170,14 @@ parseNormalLine = (comment >> return Comment) <|> beginEntryListLine <|> diffLin
         _ -> empty
     unlockSchemeLine = do
       ws
-      tokens "#unlockDataScheme"
+      tokens "#unlockDataScheme" <|> tokens "#unlockScheme"
       ws1
       unlockSchemeStr <- parseName
       comment
       case map toLower unlockSchemeStr of
         "stable" -> return $ UnlockSchemeLine Stable
         "optimized" -> return $ UnlockSchemeLine Optimized
+        "none" -> return $ UnlockSchemeLine None
         _ -> empty
     relTypeLine = do
       ws
